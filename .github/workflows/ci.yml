@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Pyright
+        run: pyright
+
+  test-unit:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: pytest tests/ -v --ignore=tests/integration/
+
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      nextcloud:
+        image: nextcloud:latest
+        env:
+          SQLITE_DATABASE: nextcloud
+          NEXTCLOUD_ADMIN_USER: admin
+          NEXTCLOUD_ADMIN_PASSWORD: admin
+        ports:
+          - 8080:80
+        options: >-
+          --health-cmd "curl -f http://localhost/status.php || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Wait for Nextcloud
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/status.php | python3 -c "import sys,json; sys.exit(0 if json.load(sys.stdin)['installed'] else 1)" 2>/dev/null; then
+              echo "Nextcloud is ready"
+              break
+            fi
+            echo "Waiting... ($i)"
+            sleep 3
+          done
+
+      - name: Disable rate limiting
+        run: |
+          # Install occ wrapper — Nextcloud in Docker uses www-data
+          docker exec ${{ job.services.nextcloud.id }} su -s /bin/bash www-data -c "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean" || true
+          docker exec ${{ job.services.nextcloud.id }} su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean" || true
+
+      - name: Run integration tests
+        env:
+          NEXTCLOUD_URL: http://localhost:8080
+          NEXTCLOUD_USER: admin
+          NEXTCLOUD_PASSWORD: admin
+        run: pytest tests/integration/ -v -m integration
