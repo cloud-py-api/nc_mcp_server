@@ -1,49 +1,88 @@
 [build-system]
-requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+requires = [ "setuptools>=68" ]
 
 [project]
 name = "nextcloud-mcp-server"
 version = "0.1.0"
 description = "MCP server for Nextcloud — expose Nextcloud APIs as AI-usable tools"
 readme = "README.md"
+keywords = [ "ai", "mcp", "model-context-protocol", "nextcloud" ]
 license = "MIT"
-requires-python = ">=3.12"
 authors = [
-    {name = "cloud-py-api", email = "andrey18106x@gmail.com"},
+  { name = "Alexander Piskun", email = "bigcat88@icloud.com" },
 ]
-keywords = ["nextcloud", "mcp", "ai", "model-context-protocol"]
+requires-python = ">=3.12"
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "mcp[cli]>=1.20",
-    "niquests>=3.0",
+  "mcp[cli]>=1.20",
+  "niquests>=3",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24",
-    "ruff>=0.8",
-    "pyright>=1.1",
+optional-dependencies.dev = [
+  "black",
+  "isort",
+  "pre-commit",
+  "pyright>=1.1",
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
 ]
-
-[project.scripts]
-nextcloud-mcp = "nextcloud_mcp.__main__:main"
+scripts.nextcloud-mcp = "nextcloud_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = [ "src" ]
+
+[tool.black]
+line-length = 120
+preview = true
 
 [tool.ruff]
 target-version = "py312"
 line-length = 120
+lint.select = [
+  "A",
+  "B",
+  "C",
+  "E",
+  "F",
+  "G",
+  "I",
+  "PIE",
+  "Q",
+  "RET",
+  "RUF",
+  "S",
+  "SIM",
+  "UP",
+  "W",
+]
+lint.extend-ignore = [
+  "I001",
+  "RUF100",
+  "S311",
+  "S603",
+  "SIM117",
+]
+lint.extend-per-file-ignores."src/nextcloud_mcp/config.py" = [ "S104" ]
+lint.extend-per-file-ignores."tests/**/*.py" = [ "E402", "S", "UP" ]
 
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "TCH"]
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+asyncio_mode = "auto"
+markers = [
+  "integration: marks tests that require a running Nextcloud instance",
+]
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -51,10 +90,3 @@ typeCheckingMode = "strict"
 venvPath = "."
 venv = "venv"
 reportUnusedFunction = false
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-markers = [
-    "integration: marks tests that require a running Nextcloud instance",
-]

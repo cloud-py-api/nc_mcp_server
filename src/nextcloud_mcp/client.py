@@ -104,8 +104,8 @@ class NextcloudClient:
             },
         )
         response.raise_for_status()
-        assert response.text is not None
-        return self._parse_propfind(response.text, user)
+        text = response.text or ""
+        return self._parse_propfind(text, user)
 
     async def dav_get(self, path: str) -> bytes:
         """GET a file's content via WebDAV."""
@@ -114,8 +114,7 @@ class NextcloudClient:
         url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
         response = await session.get(url)
         response.raise_for_status()
-        assert response.content is not None
-        return response.content
+        return response.content or b""
 
     async def dav_put(self, path: str, content: bytes, content_type: str = "application/octet-stream") -> None:
         """PUT (upload/overwrite) a file via WebDAV."""
@@ -159,7 +158,7 @@ class NextcloudClient:
     @staticmethod
     def _parse_propfind(xml_text: str, user: str) -> list[dict[str, Any]]:
         """Parse a PROPFIND XML response into a list of file/folder dicts."""
-        root = ET.fromstring(xml_text)
+        root = ET.fromstring(xml_text)  # noqa: S314 - trusted Nextcloud server response
         entries: list[dict[str, Any]] = []
         dav_prefix = f"/remote.php/dav/files/{user}/"
 
