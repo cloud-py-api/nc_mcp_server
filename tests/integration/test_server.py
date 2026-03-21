@@ -1,0 +1,61 @@
+"""Integration tests for the MCP server — tool registration, lifecycle, and configuration."""
+
+import pytest
+
+from nextcloud_mcp.config import Config
+from nextcloud_mcp.permissions import PermissionLevel
+from nextcloud_mcp.server import create_server
+
+pytestmark = pytest.mark.integration
+
+EXPECTED_TOOLS = [
+    "create_directory",
+    "delete_file",
+    "dismiss_all_notifications",
+    "dismiss_notification",
+    "get_current_user",
+    "get_file",
+    "get_user",
+    "list_directory",
+    "list_notifications",
+    "list_users",
+    "move_file",
+    "upload_file",
+]
+
+
+class TestServerCreation:
+    @pytest.mark.asyncio
+    async def test_all_tools_registered(self, nc_config: Config) -> None:
+        mcp = create_server(nc_config)
+        names = sorted(t.name for t in mcp._tool_manager.list_tools())
+        assert names == EXPECTED_TOOLS
+
+    @pytest.mark.asyncio
+    async def test_tool_count(self, nc_config: Config) -> None:
+        mcp = create_server(nc_config)
+        assert len(mcp._tool_manager.list_tools()) == len(EXPECTED_TOOLS)
+
+    @pytest.mark.asyncio
+    async def test_every_tool_has_description(self, nc_config: Config) -> None:
+        mcp = create_server(nc_config)
+        for tool in mcp._tool_manager.list_tools():
+            assert tool.description, f"Tool '{tool.name}' has no description"
+            assert len(tool.description) > 20, f"Tool '{tool.name}' description too short"
+
+    @pytest.mark.asyncio
+    async def test_server_name(self, nc_config: Config) -> None:
+        mcp = create_server(nc_config)
+        assert mcp.name == "nextcloud-mcp-server"
+
+    @pytest.mark.asyncio
+    async def test_create_server_with_different_permissions(self) -> None:
+        for level in PermissionLevel:
+            config = Config(
+                nextcloud_url="http://nextcloud.ncmcp",
+                user="admin",
+                password="admin",
+                permission_level=level,
+            )
+            mcp = create_server(config)
+            assert len(mcp._tool_manager.list_tools()) == len(EXPECTED_TOOLS)
