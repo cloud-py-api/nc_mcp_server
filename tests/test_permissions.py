@@ -1,13 +1,10 @@
 """Tests for the permission model."""
 
-from __future__ import annotations
-
 import pytest
 
 from nextcloud_mcp.permissions import (
     PermissionDeniedError,
     PermissionLevel,
-    get_permission_level,
     require_permission,
     set_permission_level,
 )

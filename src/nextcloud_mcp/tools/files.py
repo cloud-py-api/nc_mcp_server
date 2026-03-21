@@ -1,7 +1,5 @@
 """File management tools — list, read, upload, delete, move files via WebDAV."""
 
-from __future__ import annotations
-
 import json
 
 from mcp.server.fastmcp import FastMCP

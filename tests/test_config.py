@@ -1,9 +1,5 @@
 """Tests for configuration loading."""
 
-from __future__ import annotations
-
-import os
-
 import pytest
 
 from nextcloud_mcp.config import Config

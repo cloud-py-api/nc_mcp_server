@@ -1,7 +1,5 @@
 """Shared test fixtures."""
 
-from __future__ import annotations
-
 import pytest
 
 from nextcloud_mcp.config import Config

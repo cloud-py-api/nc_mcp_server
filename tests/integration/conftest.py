@@ -1,8 +1,7 @@
 """Integration test fixtures — require a running Nextcloud instance."""
 
-from __future__ import annotations
-
 import os
+from collections.abc import AsyncGenerator
 
 import pytest
 
@@ -33,8 +32,8 @@ def nc_config() -> Config:
 
 
 @pytest.fixture
-async def nc_client(nc_config: Config) -> NextcloudClient:
+async def nc_client(nc_config: Config) -> AsyncGenerator[NextcloudClient]:
     """Nextcloud HTTP client for integration tests. Closes after test."""
     client = NextcloudClient(nc_config)
-    yield client  # type: ignore[misc]
+    yield client
     await client.close()

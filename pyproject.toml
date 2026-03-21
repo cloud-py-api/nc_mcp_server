@@ -16,7 +16,6 @@ keywords = ["nextcloud", "mcp", "ai", "model-context-protocol"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
@@ -51,6 +50,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = "venv"
+reportUnusedFunction = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

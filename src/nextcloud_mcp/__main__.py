@@ -1,9 +1,6 @@
 """CLI entry point for the Nextcloud MCP server."""
 
-from __future__ import annotations
-
 import argparse
-import sys
 
 
 def main() -> None:

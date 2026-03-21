@@ -1,10 +1,9 @@
 """Permission model for controlling what operations AI clients can perform."""
 
-from __future__ import annotations
-
 import enum
 import functools
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -21,7 +20,7 @@ class PermissionLevel(enum.Enum):
     WRITE = "write"
     DESTRUCTIVE = "destructive"
 
-    def includes(self, required: PermissionLevel) -> bool:
+    def includes(self, required: "PermissionLevel") -> bool:
         """Check if this permission level includes the required level."""
         order = {
             PermissionLevel.READ: 0,

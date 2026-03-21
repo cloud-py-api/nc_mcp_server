@@ -1,7 +1,5 @@
 """User management tools — get user info via OCS API."""
 
-from __future__ import annotations
-
 import json
 
 from mcp.server.fastmcp import FastMCP

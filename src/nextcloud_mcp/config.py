@@ -1,7 +1,5 @@
 """Configuration loaded from environment variables."""
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field
 
@@ -31,7 +29,7 @@ class Config:
     port: int = field(default=8100)
 
     @classmethod
-    def from_env(cls) -> Config:
+    def from_env(cls) -> "Config":
         """Load configuration from environment variables."""
         url = os.environ.get("NEXTCLOUD_URL", "").rstrip("/")
         user = os.environ.get("NEXTCLOUD_USER", "")
@@ -42,9 +40,7 @@ class Config:
             perm = PermissionLevel(perm_str)
         except ValueError:
             valid = ", ".join(p.value for p in PermissionLevel)
-            raise ValueError(
-                f"Invalid NEXTCLOUD_MCP_PERMISSIONS='{perm_str}'. Valid values: {valid}"
-            ) from None
+            raise ValueError(f"Invalid NEXTCLOUD_MCP_PERMISSIONS='{perm_str}'. Valid values: {valid}") from None
 
         host = os.environ.get("NEXTCLOUD_MCP_HOST", "0.0.0.0")
         port = int(os.environ.get("NEXTCLOUD_MCP_PORT", "8100"))
@@ -60,7 +56,7 @@ class Config:
 
     def validate(self) -> None:
         """Raise ValueError if required config is missing."""
-        missing = []
+        missing: list[str] = []
         if not self.nextcloud_url:
             missing.append("NEXTCLOUD_URL")
         if not self.user:

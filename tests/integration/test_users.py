@@ -1,7 +1,5 @@
 """Integration tests for user operations against a real Nextcloud instance."""
 
-from __future__ import annotations
-
 import pytest
 
 from nextcloud_mcp.client import NextcloudClient
