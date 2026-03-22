@@ -90,3 +90,4 @@ typeCheckingMode = "strict"
 venvPath = "."
 venv = "venv"
 reportUnusedFunction = false
+reportPrivateUsage = false
