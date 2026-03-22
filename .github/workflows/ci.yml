@@ -106,6 +106,8 @@ jobs:
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set loglevel --value=0 --type=integer"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install spreed" || echo "spreed already installed"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install admin_notifications" || echo "admin_notifications already installed"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:list" | head -30
 
       - name: Run integration tests

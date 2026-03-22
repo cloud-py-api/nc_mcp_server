@@ -6,6 +6,7 @@ permission checks, argument parsing, and JSON serialization.
 
 import contextlib
 import json
+from typing import Any
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
@@ -20,7 +21,7 @@ pytestmark = pytest.mark.integration
 # ---------------------------------------------------------------------------
 
 
-async def _create_room(nc_mcp: McpTestHelper, name: str, room_type: int = 2) -> dict[str, object]:
+async def _create_room(nc_mcp: McpTestHelper, name: str, room_type: int = 2) -> dict[str, Any]:
     """Create a conversation and return the parsed result."""
     result = await nc_mcp.call("create_conversation", room_type=room_type, name=name)
     return json.loads(result)
@@ -31,7 +32,7 @@ async def _delete_room(nc_mcp: McpTestHelper, token: str) -> None:
     await nc_mcp.client.ocs_delete(f"apps/spreed/api/v4/room/{token}")
 
 
-async def _send_msg(nc_mcp: McpTestHelper, token: str, message: str) -> dict[str, object]:
+async def _send_msg(nc_mcp: McpTestHelper, token: str, message: str) -> dict[str, Any]:
     """Send a message and return the parsed result."""
     result = await nc_mcp.call("send_message", token=token, message=message)
     return json.loads(result)
@@ -134,7 +135,7 @@ class TestGetMessages:
         try:
             await _send_msg(nc_mcp, str(room["token"]), "hello world")
             result = await nc_mcp.call("get_messages", token=str(room["token"]))
-            data = json.loads(result)
+            data: list[Any] = json.loads(result)
             assert isinstance(data, list)
             assert len(data) >= 1
         finally:
@@ -222,7 +223,7 @@ class TestGetParticipants:
         room = await _create_room(nc_mcp, "test-participants")
         try:
             result = await nc_mcp.call("get_participants", token=str(room["token"]))
-            data = json.loads(result)
+            data: list[Any] = json.loads(result)
             assert isinstance(data, list)
             assert len(data) >= 1
         finally:
