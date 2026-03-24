@@ -1,17 +1,12 @@
 """File management tools — list, read, upload, delete, move, search files via WebDAV."""
 
-import contextlib
 import json
-import xml.etree.ElementTree as ET
-from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ..client import NextcloudClient
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
-
-DAV_NS = "DAV:"
-OC_NS = "http://owncloud.org/ns"
 
 
 def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int, mimetype: str) -> str:
@@ -48,44 +43,6 @@ def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int,
         f"<d:firstresult>{offset}</d:firstresult></d:limit>"
         "</d:basicsearch></d:searchrequest>"
     )
-
-
-def _parse_search_results(xml_text: str, user: str) -> list[dict[str, Any]]:
-    """Parse a SEARCH response into a list of file dicts."""
-    root = ET.fromstring(xml_text)  # noqa: S314
-    entries: list[dict[str, Any]] = []
-    dav_prefix = f"/remote.php/dav/files/{user}/"
-    for response in root.findall(f"{{{DAV_NS}}}response"):
-        href_el = response.find(f"{{{DAV_NS}}}href")
-        if href_el is None or href_el.text is None:
-            continue
-        href = href_el.text
-        path = (href.split(dav_prefix, 1)[1] if dav_prefix in href else href).rstrip("/")
-        propstat = response.find(f"{{{DAV_NS}}}propstat")
-        if propstat is None:
-            continue
-        prop = propstat.find(f"{{{DAV_NS}}}prop")
-        if prop is None:
-            continue
-        resource_type = prop.find(f"{{{DAV_NS}}}resourcetype")
-        is_dir = resource_type is not None and resource_type.find(f"{{{DAV_NS}}}collection") is not None
-        entry: dict[str, Any] = {"path": path or "/", "is_directory": is_dir}
-        for tag, key in [
-            (f"{{{DAV_NS}}}getlastmodified", "last_modified"),
-            (f"{{{DAV_NS}}}getcontenttype", "content_type"),
-            (f"{{{DAV_NS}}}getcontentlength", "size"),
-            (f"{{{OC_NS}}}fileid", "file_id"),
-            (f"{{{OC_NS}}}size", "total_size"),
-        ]:
-            el = prop.find(tag)
-            if el is not None and el.text:
-                entry[key] = el.text
-        for size_key in ("size", "total_size"):
-            if size_key in entry:
-                with contextlib.suppress(ValueError, TypeError):
-                    entry[size_key] = int(entry[size_key])
-        entries.append(entry)
-    return entries
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
@@ -172,7 +129,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             headers={"Content-Type": "text/xml; charset=utf-8"},
             context=f"Search files: query={query!r} mimetype={mimetype!r}",
         )
-        results = _parse_search_results(response.text or "", config.user)
+        results = NextcloudClient._parse_propfind(response.text or "", config.user)
         result = json.dumps(results, indent=2, default=str)
         if results:
             next_offset = offset + len(results)
