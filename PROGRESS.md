@@ -47,9 +47,9 @@
 | Users | 3 | 13 |
 | Notifications | 3 | 11 |
 | Talk | 8 | 48 |
-| Talk Polls | 4 | 31 |
+| Talk Polls | 4 | 32 |
 | Activity | 1 | 18 |
-| Comments | 4 | 25 |
+| Comments | 4 | 29 |
 | Server | — | 6 |
 | Permissions | — | 34 |
 | Errors | — | 10 |

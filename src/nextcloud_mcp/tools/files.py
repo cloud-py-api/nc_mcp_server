@@ -25,8 +25,9 @@ def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int,
         where_clause = where_parts[0]
     else:
         where_clause = "<d:and>" + "".join(where_parts) + "</d:and>"
+    safe_user = xml_escape(user)
     safe_path = xml_escape(path.strip("/"))
-    scope = f"/files/{user}/{safe_path}" if safe_path else f"/files/{user}"
+    scope = f"/files/{safe_user}/{safe_path}" if safe_path else f"/files/{safe_user}"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<d:searchrequest xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'

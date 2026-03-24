@@ -114,6 +114,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             (count, offset, has_more).
         """
         limit = max(1, min(100, limit))
+        offset = max(0, offset)
         client = get_client()
         body = FILTER_COMMENTS_BODY.format(limit=limit, offset=offset)
         response = await client.dav_request(
