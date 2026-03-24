@@ -186,6 +186,30 @@ class TestAddComment:
         finally:
             await nc_mcp.client.dav_delete("comment-author.txt")
 
+    @pytest.mark.asyncio
+    async def test_comment_with_mention(self, nc_mcp: McpTestHelper) -> None:
+        file_id = await _get_file_id(nc_mcp, "comment-mention.txt")
+        try:
+            await _add_comment(nc_mcp, file_id, "Hey @admin check this")
+            result = await nc_mcp.call("list_comments", file_id=file_id)
+            data = json.loads(result.split("\n\n---")[0])
+            comment = data[0] if data[0]["message"] == "Hey @admin check this" else data[-1]
+            assert "mentions" in comment
+            assert any(m.get("mentionId") == "admin" for m in comment["mentions"])
+        finally:
+            await nc_mcp.client.dav_delete("comment-mention.txt")
+
+    @pytest.mark.asyncio
+    async def test_comment_with_xml_special_chars(self, nc_mcp: McpTestHelper) -> None:
+        file_id = await _get_file_id(nc_mcp, "comment-xml.txt")
+        try:
+            await _add_comment(nc_mcp, file_id, 'Test <tag> & "quotes"')
+            result = await nc_mcp.call("list_comments", file_id=file_id)
+            assert "<tag>" in result
+            assert "&" in result
+        finally:
+            await nc_mcp.client.dav_delete("comment-xml.txt")
+
 
 class TestEditComment:
     @pytest.mark.asyncio
@@ -211,6 +235,28 @@ class TestEditComment:
                 await nc_mcp.call("edit_comment", file_id=file_id, comment_id=int(added["id"]), message="")
         finally:
             await nc_mcp.client.dav_delete("comment-edit-empty.txt")
+
+    @pytest.mark.asyncio
+    async def test_edit_long_message_raises(self, nc_mcp: McpTestHelper) -> None:
+        file_id = await _get_file_id(nc_mcp, "comment-edit-long.txt")
+        try:
+            added = await _add_comment(nc_mcp, file_id, "Will edit")
+            with pytest.raises((ToolError, ValueError)):
+                await nc_mcp.call("edit_comment", file_id=file_id, comment_id=int(added["id"]), message="x" * 1001)
+        finally:
+            await nc_mcp.client.dav_delete("comment-edit-long.txt")
+
+    @pytest.mark.asyncio
+    async def test_edit_with_xml_special_chars(self, nc_mcp: McpTestHelper) -> None:
+        file_id = await _get_file_id(nc_mcp, "comment-edit-xml.txt")
+        try:
+            added = await _add_comment(nc_mcp, file_id, "Original")
+            xml_msg = 'Test <b>bold</b> & "quotes" work'
+            result = await nc_mcp.call("edit_comment", file_id=file_id, comment_id=int(added["id"]), message=xml_msg)
+            data = json.loads(result)
+            assert data["message"] == xml_msg
+        finally:
+            await nc_mcp.client.dav_delete("comment-edit-xml.txt")
 
     @pytest.mark.asyncio
     async def test_edit_nonexistent_comment_raises(self, nc_mcp: McpTestHelper) -> None:

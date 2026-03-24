@@ -3,6 +3,7 @@
 import json
 import xml.etree.ElementTree as ET
 from typing import Any
+from xml.sax.saxutils import escape as xml_escape
 
 from mcp.server.fastmcp import FastMCP
 
@@ -187,7 +188,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<d:propertyupdate xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
             "<d:set><d:prop>"
-            f"<oc:message>{message}</oc:message>"
+            f"<oc:message>{xml_escape(message)}</oc:message>"
             "</d:prop></d:set></d:propertyupdate>"
         )
         await client.dav_request(
