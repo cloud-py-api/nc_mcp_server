@@ -181,6 +181,23 @@ class NextcloudClient:
         )
         _raise_for_status(response, f"Move '{source}' to '{destination}'")
 
+    # --- Generic DAV ---
+
+    async def dav_request(
+        self,
+        method: str,
+        path: str,
+        body: str | bytes | None = None,
+        headers: dict[str, str] | None = None,
+        context: str = "",
+    ) -> niquests.Response:
+        """Make a raw DAV request and return the response."""
+        session = await self._get_session()
+        url = f"{self._base_url}/remote.php/dav/{path.lstrip('/')}"
+        response = await session.request(method, url, data=body, headers=headers or {})
+        _raise_for_status(response, context or f"DAV {method} {path}")
+        return response
+
     # --- Parsing ---
 
     @staticmethod
