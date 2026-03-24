@@ -2,11 +2,5 @@ codecov:
   notify:
     after_n_builds: 5
 
-coverage:
-  status:
-    project:
-      default:
-        after_n_builds: 5
-    patch:
-      default:
-        after_n_builds: 5
+comment:
+  after_n_builds: 5
