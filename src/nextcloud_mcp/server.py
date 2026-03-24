@@ -6,7 +6,7 @@ from .client import NextcloudClient
 from .config import Config
 from .permissions import set_permission_level
 from .state import get_client, get_config, set_state
-from .tools import activity, files, notifications, talk, users
+from .tools import activity, comments, files, notifications, talk, users
 
 __all__ = ["create_server", "get_client", "get_config"]
 
@@ -35,6 +35,7 @@ def create_server(config: Config | None = None) -> FastMCP:
     )
 
     activity.register(mcp)
+    comments.register(mcp)
     files.register(mcp)
     notifications.register(mcp)
     talk.register(mcp)
