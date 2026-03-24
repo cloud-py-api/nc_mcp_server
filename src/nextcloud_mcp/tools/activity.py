@@ -110,13 +110,17 @@ def register(mcp: FastMCP) -> None:
         )
         data = await client.ocs_get(path, params=params)
         activities = [_format_activity(a) for a in data]
-        oldest_id = min(a["activity_id"] for a in activities) if activities else None
+        if activities:
+            ids = [a["activity_id"] for a in activities]
+            next_since = min(ids) if sort == "desc" else max(ids)
+        else:
+            next_since = None
         response: dict[str, Any] = {
             "data": activities,
             "pagination": {
                 "count": len(activities),
                 "has_more": len(activities) == limit,
-                "since": oldest_id,
+                "since": next_since,
             },
         }
         return json.dumps(response, indent=2, default=str)

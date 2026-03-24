@@ -130,6 +130,24 @@ class TestGetActivity:
             assert ids == sorted(ids, reverse=True), "Descending sort should have IDs in reverse order"
 
     @pytest.mark.asyncio
+    async def test_pagination_since_desc_uses_min_id(self, nc_mcp: McpTestHelper) -> None:
+        await _generate_activity(nc_mcp)
+        result = await nc_mcp.call("get_activity", sort="desc", limit=5)
+        parsed = json.loads(result)
+        data = parsed["data"]
+        if len(data) >= 2:
+            assert parsed["pagination"]["since"] == min(a["activity_id"] for a in data)
+
+    @pytest.mark.asyncio
+    async def test_pagination_since_asc_uses_max_id(self, nc_mcp: McpTestHelper) -> None:
+        await _generate_activity(nc_mcp)
+        result = await nc_mcp.call("get_activity", sort="asc", limit=5)
+        parsed = json.loads(result)
+        data = parsed["data"]
+        if len(data) >= 2:
+            assert parsed["pagination"]["since"] == max(a["activity_id"] for a in data)
+
+    @pytest.mark.asyncio
     async def test_invalid_filter_raises(self, nc_mcp: McpTestHelper) -> None:
         with pytest.raises((ToolError, ValueError)):
             await nc_mcp.call("get_activity", activity_filter="nonexistent")
