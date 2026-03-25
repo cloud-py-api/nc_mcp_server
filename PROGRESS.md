@@ -23,6 +23,7 @@
 - [x] Users tools: create_user, delete_user (2026-03-25)
 - [x] copy_file tool via WebDAV COPY (2026-03-25)
 - [x] get_file returns MCP ImageContent for images (PNG, JPEG, GIF, WebP, BMP, SVG) (2026-03-25)
+- [x] System Tags tools: list_tags, get_file_tags, create_tag, assign_tag, unassign_tag, delete_tag (2026-03-25)
 
 ### In Progress
 
@@ -55,9 +56,10 @@
 | Activity | 1 | 18 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
-| Server | — | 6 |
+| Server | — | 7 |
 | Permissions | — | 34 |
 | Errors | — | 10 |
 | Config | — | 12 |
 | State | — | 2 |
-| **Total** | **36** | **291** |
+| System Tags | 6 | 22 |
+| **Total** | **42** | **313** |
