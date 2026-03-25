@@ -12,9 +12,11 @@ pytestmark = pytest.mark.integration
 
 
 async def _generate_activity(nc_mcp: McpTestHelper) -> None:
-    """Generate file activity by uploading and deleting a test file."""
-    await nc_mcp.client.dav_put("activity-test.txt", b"activity test", content_type="text/plain")
-    await nc_mcp.client.dav_delete("activity-test.txt")
+    """Generate multiple distinct file activities to ensure enough ungrouped entries."""
+    for i in range(3):
+        name = f"activity-test-{i}.txt"
+        await nc_mcp.client.dav_put(name, f"activity {i}".encode(), content_type="text/plain")
+        await nc_mcp.client.dav_delete(name)
 
 
 class TestGetActivity:
