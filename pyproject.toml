@@ -4,7 +4,7 @@ requires = [ "setuptools>=68" ]
 
 [project]
 name = "nc-mcp-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Nextcloud — expose Nextcloud APIs as AI-usable tools"
 readme = "README.md"
 keywords = [ "ai", "mcp", "model-context-protocol", "nextcloud" ]
