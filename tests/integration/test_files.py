@@ -355,9 +355,7 @@ class TestGetFileImageHandling:
     async def test_image_returns_image_content(self, nc_mcp: McpTestHelper) -> None:
         await nc_mcp.create_test_dir()
         await nc_mcp.client.dav_put(f"{TEST_BASE_DIR}/test.png", _TINY_PNG, content_type="image/png")
-        result = await nc_mcp.mcp._tool_manager.call_tool(
-            "get_file", {"path": f"{TEST_BASE_DIR}/test.png"}
-        )
+        result = await nc_mcp.mcp._tool_manager.call_tool("get_file", {"path": f"{TEST_BASE_DIR}/test.png"})
         assert isinstance(result, list)
         item = result[0]  # type: ignore[index]
         assert item.type == "image"  # type: ignore[union-attr]
@@ -394,9 +392,7 @@ class TestGetFileImageHandling:
         await nc_mcp.create_test_dir()
         jpeg_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100 + b"\xff\xd9"
         await nc_mcp.client.dav_put(f"{TEST_BASE_DIR}/test.jpg", jpeg_data, content_type="image/jpeg")
-        result = await nc_mcp.mcp._tool_manager.call_tool(
-            "get_file", {"path": f"{TEST_BASE_DIR}/test.jpg"}
-        )
+        result = await nc_mcp.mcp._tool_manager.call_tool("get_file", {"path": f"{TEST_BASE_DIR}/test.jpg"})
         assert isinstance(result, list)
         item = result[0]  # type: ignore[index]
         assert item.type == "image"  # type: ignore[union-attr]
