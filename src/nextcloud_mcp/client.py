@@ -106,6 +106,15 @@ class NextcloudClient:
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
+    async def ocs_put(self, path: str, data: dict[str, Any] | None = None) -> Any:
+        """Make an OCS PUT request and return the data portion."""
+        session = await self._get_session()
+        url = f"{self._base_url}/ocs/v2.php/{path}"
+        response = await session.put(url, data=data or {})
+        _raise_for_status(response, f"OCS PUT {path}")
+        result: dict[str, Any] = response.json()  # type: ignore[assignment]
+        return result["ocs"]["data"]
+
     async def ocs_delete(self, path: str) -> Any:
         """Make an OCS DELETE request and return the data portion (if any)."""
         session = await self._get_session()

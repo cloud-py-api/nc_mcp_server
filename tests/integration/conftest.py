@@ -133,3 +133,7 @@ async def _cleanup(client: NextcloudClient) -> None:
         await client.dav_delete(TEST_BASE_DIR)
     with contextlib.suppress(Exception):
         await client.ocs_delete("apps/notifications/api/v2/notifications")
+    with contextlib.suppress(Exception):
+        await client.ocs_delete("apps/user_status/api/v1/user_status/message")
+    with contextlib.suppress(Exception):
+        await client.ocs_put("apps/user_status/api/v1/user_status/status", data={"statusType": "online"})

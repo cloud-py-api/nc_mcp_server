@@ -3,6 +3,7 @@
 Tests call MCP tools by name to exercise the full tool stack.
 """
 
+import contextlib
 import json
 
 import pytest
@@ -101,3 +102,70 @@ class TestGetUser:
         expected_fields = ["id", "displayname", "email", "enabled", "groups"]
         for field in expected_fields:
             assert field in data, f"Missing field: {field}"
+
+
+class TestCreateUser:
+    @pytest.mark.asyncio
+    async def test_create_and_verify(self, nc_mcp: McpTestHelper) -> None:
+        try:
+            result = await nc_mcp.call("create_user", user_id="mcp-test-user", password="t3St*Pw!xQ9#mK2z")
+            data = json.loads(result)
+            assert data["id"] == "mcp-test-user"
+            verify = json.loads(await nc_mcp.call("get_user", user_id="mcp-test-user"))
+            assert verify["id"] == "mcp-test-user"
+        finally:
+            with contextlib.suppress(Exception):
+                await nc_mcp.call("delete_user", user_id="mcp-test-user")
+
+    @pytest.mark.asyncio
+    async def test_create_with_display_name(self, nc_mcp: McpTestHelper) -> None:
+        try:
+            await nc_mcp.call(
+                "create_user", user_id="mcp-test-dn", password="t3St*Pw!xQ9#mK2z", display_name="Test Display"
+            )
+            verify = json.loads(await nc_mcp.call("get_user", user_id="mcp-test-dn"))
+            assert verify["displayname"] == "Test Display"
+        finally:
+            with contextlib.suppress(Exception):
+                await nc_mcp.call("delete_user", user_id="mcp-test-dn")
+
+    @pytest.mark.asyncio
+    async def test_create_duplicate_raises(self, nc_mcp: McpTestHelper) -> None:
+        try:
+            await nc_mcp.call("create_user", user_id="mcp-test-dup", password="t3St*Pw!xQ9#mK2z")
+            with pytest.raises(ToolError):
+                await nc_mcp.call("create_user", user_id="mcp-test-dup", password="t3St*Pw!xQ9#mK2z")
+        finally:
+            with contextlib.suppress(Exception):
+                await nc_mcp.call("delete_user", user_id="mcp-test-dup")
+
+
+class TestDeleteUser:
+    @pytest.mark.asyncio
+    async def test_delete_user(self, nc_mcp: McpTestHelper) -> None:
+        try:
+            await nc_mcp.call("create_user", user_id="mcp-test-del", password="t3St*Pw!xQ9#mK2z")
+            result = await nc_mcp.call("delete_user", user_id="mcp-test-del")
+            assert "deleted" in result.lower()
+            with pytest.raises(ToolError):
+                await nc_mcp.call("get_user", user_id="mcp-test-del")
+        finally:
+            with contextlib.suppress(Exception):
+                await nc_mcp.call("delete_user", user_id="mcp-test-del")
+
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent_raises(self, nc_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError):
+            await nc_mcp.call("delete_user", user_id="nonexistent-user-xyz-99999")
+
+
+class TestUserPermissions:
+    @pytest.mark.asyncio
+    async def test_read_only_blocks_create(self, nc_mcp_read_only: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"[Pp]ermission"):
+            await nc_mcp_read_only.call("create_user", user_id="blocked", password="Test123!")
+
+    @pytest.mark.asyncio
+    async def test_write_blocks_delete(self, nc_mcp_write: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"[Pp]ermission"):
+            await nc_mcp_write.call("delete_user", user_id="nobody")
