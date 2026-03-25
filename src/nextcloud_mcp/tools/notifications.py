@@ -4,6 +4,7 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import DESTRUCTIVE, READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -11,7 +12,7 @@ from ..state import get_client
 def register(mcp: FastMCP) -> None:
     """Register notification tools with the MCP server."""
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_notifications() -> str:
         """List all notifications for the current Nextcloud user.
@@ -29,7 +30,7 @@ def register(mcp: FastMCP) -> None:
         )
         return json.dumps(data, indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def dismiss_notification(notification_id: int) -> str:
         """Dismiss (permanently delete) a single notification by its ID.
@@ -48,7 +49,7 @@ def register(mcp: FastMCP) -> None:
         )
         return f"Notification {notification_id} dismissed."
 
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def dismiss_all_notifications() -> str:
         """Dismiss (permanently delete) ALL notifications for the current user.

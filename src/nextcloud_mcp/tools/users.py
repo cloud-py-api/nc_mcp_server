@@ -4,12 +4,13 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import ADDITIVE, DESTRUCTIVE, READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_current_user() -> str:
         """Get information about the currently authenticated Nextcloud user.
@@ -21,7 +22,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         data = await client.ocs_get("cloud/user")
         return json.dumps(data, indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_users(search: str = "", limit: int = 25, offset: int = 0) -> str:
         """List Nextcloud users.
@@ -39,7 +40,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         data = await client.ocs_get("cloud/users", params=params)
         return json.dumps(data, indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_user(user_id: str) -> str:
         """Get detailed information about a specific Nextcloud user.
@@ -56,7 +57,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
     async def create_user(user_id: str, password: str, display_name: str = "", email: str = "") -> str:
         """Create a new Nextcloud user. Requires admin privileges.
@@ -81,7 +82,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def delete_user(user_id: str) -> str:
         """Permanently delete a Nextcloud user. Requires admin privileges.

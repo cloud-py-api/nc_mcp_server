@@ -5,6 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import ADDITIVE_IDEMPOTENT, READONLY
 from ..client import NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
@@ -23,7 +24,7 @@ def _format_status(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_user_status(user_id: str = "") -> str:
         """Get the status of a Nextcloud user.
@@ -53,7 +54,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def set_user_status(
         status_type: str = "",
@@ -102,7 +103,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             )
         return json.dumps(_format_status(result), indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def clear_user_status() -> str:
         """Clear the current user's status message and icon.

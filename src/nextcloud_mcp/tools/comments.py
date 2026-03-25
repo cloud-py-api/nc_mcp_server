@@ -7,6 +7,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -96,7 +97,7 @@ def _parse_comments_xml(xml_text: str) -> list[dict[str, Any]]:
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_comments(file_id: int, limit: int = 20, offset: int = 0) -> str:
         """List comments on a file.
@@ -137,7 +138,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
     async def add_comment(file_id: int, message: str) -> str:
         """Add a comment to a file.
@@ -169,7 +170,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         comment_id = location.rstrip("/").split("/")[-1] if location else "unknown"
         return json.dumps({"id": comment_id, "message": message}, indent=2)
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def edit_comment(file_id: int, comment_id: int, message: str) -> str:
         """Edit a comment on a file.
@@ -207,7 +208,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def delete_comment(file_id: int, comment_id: int) -> str:
         """Delete a comment from a file.

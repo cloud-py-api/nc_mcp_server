@@ -5,6 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -52,7 +53,7 @@ def _format_activity(a: dict[str, Any]) -> dict[str, Any]:
 def register(mcp: FastMCP) -> None:
     """Register activity tools with the MCP server."""
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_activity(
         activity_filter: str = "all",

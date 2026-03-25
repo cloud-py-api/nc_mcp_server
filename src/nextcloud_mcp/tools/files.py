@@ -5,6 +5,12 @@ from xml.sax.saxutils import escape as xml_escape
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import (
+    ADDITIVE_IDEMPOTENT,
+    DESTRUCTIVE,
+    DESTRUCTIVE_NON_IDEMPOTENT,
+    READONLY,
+)
 from ..client import NextcloudClient
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
@@ -48,7 +54,7 @@ def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int,
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_directory(path: str = "/") -> str:
         """List files and folders in a Nextcloud directory.
@@ -67,7 +73,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             entries = entries[1:]
         return json.dumps(entries, indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_file(path: str) -> str:
         """Read a file's content from Nextcloud.
@@ -88,7 +94,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         except UnicodeDecodeError:
             return f"[Binary file, {len(content)} bytes. Use download tools for binary content.]"
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def search_files(
         query: str = "",
@@ -145,7 +151,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def upload_file(path: str, content: str) -> str:
         """Upload or overwrite a text file in Nextcloud.
@@ -163,7 +169,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         await client.dav_put(path, content.encode("utf-8"), content_type="text/plain; charset=utf-8")
         return f"File uploaded successfully: {path}"
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def create_directory(path: str) -> str:
         """Create a new directory in Nextcloud.
@@ -180,7 +186,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def delete_file(path: str) -> str:
         """Delete a file or directory from Nextcloud.
@@ -197,7 +203,7 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         await client.dav_delete(path)
         return f"Deleted: {path}"
 
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE_NON_IDEMPOTENT)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def move_file(source: str, destination: str) -> str:
         """Move or rename a file/directory in Nextcloud.

@@ -67,6 +67,13 @@ class TestServerCreation:
             assert len(tool.description) > 20, f"Tool '{tool.name}' description too short"
 
     @pytest.mark.asyncio
+    async def test_every_tool_has_annotations(self, nc_config: Config) -> None:
+        mcp = create_server(nc_config)
+        for tool in mcp._tool_manager.list_tools():
+            assert tool.annotations is not None, f"Tool '{tool.name}' has no annotations"
+            assert tool.annotations.readOnlyHint is not None, f"Tool '{tool.name}' missing readOnlyHint"
+
+    @pytest.mark.asyncio
     async def test_server_name(self, nc_config: Config) -> None:
         mcp = create_server(nc_config)
         assert mcp.name == "nc-mcp-server"

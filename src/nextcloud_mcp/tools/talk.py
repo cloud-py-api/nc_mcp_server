@@ -5,6 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -125,7 +126,7 @@ def _format_participant(p: dict[str, Any]) -> dict[str, Any]:
 def _register_read_tools(mcp: FastMCP) -> None:
     """Register read-only Talk tools."""
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_conversations(include_notifications_disabled: bool = False) -> str:
         """List all Talk conversations the current user is part of.
@@ -149,7 +150,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         conversations = [_format_conversation(room) for room in data]
         return json.dumps(conversations, indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_conversation(token: str) -> str:
         """Get details about a specific Talk conversation.
@@ -165,7 +166,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         data = await client.ocs_get(f"apps/spreed/api/v4/room/{token}")
         return json.dumps(_format_conversation(data), indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_messages(
         token: str,
@@ -218,7 +219,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
         return "\n".join(lines)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_participants(token: str) -> str:
         """List participants in a Talk conversation.
@@ -236,7 +237,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         participants = [_format_participant(p) for p in data]
         return json.dumps(participants, indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def get_poll(token: str, poll_id: int) -> str:
         """Get a poll from a Talk conversation.
@@ -264,7 +265,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 def _register_poll_tools(mcp: FastMCP) -> None:
     """Register poll-related Talk tools (write + destructive)."""
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
     async def create_poll(
         token: str,
@@ -304,7 +305,7 @@ def _register_poll_tools(mcp: FastMCP) -> None:
         data = await client.ocs_post(f"apps/spreed/api/v1/poll/{token}", data=post_data)
         return json.dumps(_format_poll(data), indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def vote_poll(token: str, poll_id: int, option_ids: list[int]) -> str:
         """Vote on a poll in a Talk conversation.
@@ -332,7 +333,7 @@ def _register_poll_tools(mcp: FastMCP) -> None:
         data = await client.ocs_post(f"apps/spreed/api/v1/poll/{token}/{poll_id}", data=post_data)
         return json.dumps(_format_poll(data), indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def close_poll(token: str, poll_id: int) -> str:
         """Close a poll in a Talk conversation.
@@ -358,7 +359,7 @@ def _register_poll_tools(mcp: FastMCP) -> None:
 def _register_write_tools(mcp: FastMCP) -> None:
     """Register write and destructive Talk tools for conversations and messages."""
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
     async def send_message(token: str, message: str, reply_to: int = 0) -> str:
         """Send a chat message to a Talk conversation.
@@ -381,7 +382,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         data = await client.ocs_post(f"apps/spreed/api/v1/chat/{token}", data=post_data)
         return json.dumps(_format_message_full(data), indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
     async def create_conversation(
         room_type: int,
@@ -410,7 +411,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         data = await client.ocs_post("apps/spreed/api/v4/room", data=post_data)
         return json.dumps(_format_conversation(data), indent=2, default=str)
 
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def delete_message(token: str, message_id: int) -> str:
         """Delete a chat message from a Talk conversation.
@@ -429,7 +430,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         await client.ocs_delete(f"apps/spreed/api/v1/chat/{token}/{message_id}")
         return f"Message {message_id} deleted from conversation {token}."
 
-    @mcp.tool()
+    @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
     async def leave_conversation(token: str) -> str:
         """Leave a Talk conversation.
