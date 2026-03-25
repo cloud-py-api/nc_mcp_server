@@ -20,6 +20,7 @@
 
 - [x] search_files tool via WebDAV SEARCH (2026-03-24)
 - [x] User Status tools: get_user_status, set_user_status, clear_user_status (2026-03-25)
+- [x] Users tools: create_user, delete_user (2026-03-25)
 
 ### In Progress
 
@@ -45,7 +46,7 @@
 | Module | Tools | Tests |
 |--------|-------|-------|
 | Files | 7 | 35 |
-| Users | 3 | 13 |
+| Users | 5 | 20 |
 | Notifications | 3 | 11 |
 | Talk | 8 | 48 |
 | Talk Polls | 4 | 32 |
@@ -57,4 +58,4 @@
 | Errors | — | 10 |
 | Config | — | 12 |
 | State | — | 2 |
-| **Total** | **33** | **271** |
+| **Total** | **35** | **278** |

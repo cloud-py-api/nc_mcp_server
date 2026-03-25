@@ -1,9 +1,14 @@
 """Integration tests for User Status tools against a real Nextcloud instance."""
 
+import contextlib
 import json
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
+
+from nextcloud_mcp.config import Config
+from nextcloud_mcp.server import create_server
+from nextcloud_mcp.state import get_client
 
 from .conftest import McpTestHelper
 
@@ -36,11 +41,30 @@ class TestGetUserStatus:
         assert data["status"] == "away"
 
     @pytest.mark.asyncio
-    async def test_get_own_status_when_unset(self, nc_mcp: McpTestHelper) -> None:
-        await nc_mcp.call("clear_user_status")
-        result = await nc_mcp.call("get_user_status")
-        data = json.loads(result)
-        assert "status" in data
+    async def test_get_own_status_when_never_set(self, nc_mcp: McpTestHelper) -> None:
+        """A fresh user who never set a status gets a 404 from the API.
+        The tool should handle this gracefully and return a default offline status."""
+        try:
+            await nc_mcp.call("create_user", user_id="mcp-fresh-status", password="TestPass123!")
+            fresh_config = Config(
+                nextcloud_url=nc_mcp.client._base_url,
+                user="mcp-fresh-status",
+                password="TestPass123!",
+                permission_level=nc_mcp.client._config.permission_level,
+            )
+            fresh_mcp = create_server(fresh_config)
+            fresh_helper = McpTestHelper(fresh_mcp, get_client())
+            try:
+                result = await fresh_helper.call("get_user_status")
+                data = json.loads(result)
+                assert data["user_id"] == "mcp-fresh-status"
+                assert data["status"] == "offline"
+                assert data["message"] is None
+            finally:
+                await fresh_helper.client.close()
+        finally:
+            with contextlib.suppress(Exception):
+                await nc_mcp.call("delete_user", user_id="mcp-fresh-status")
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_user_status(self, nc_mcp: McpTestHelper) -> None:
