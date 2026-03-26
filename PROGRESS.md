@@ -24,6 +24,7 @@
 - [x] copy_file tool via WebDAV COPY (2026-03-25)
 - [x] get_file returns MCP ImageContent for images (PNG, JPEG, GIF, WebP, BMP, SVG) (2026-03-25)
 - [x] System Tags tools: list_tags, get_file_tags, create_tag, assign_tag, unassign_tag, delete_tag (2026-03-25)
+- [x] Files Sharing tools: list_shares, get_share, create_share, update_share, delete_share (2026-03-26)
 
 ### In Progress
 
@@ -32,7 +33,7 @@
 
 ### Next Up
 - Announcement Center
-- Files Sharing, Trashbin, Versions
+- Files Trashbin, Versions
 - Improve error handling and error messages
 
 ## Phases
@@ -61,5 +62,6 @@
 | Errors | — | 10 |
 | Config | — | 12 |
 | State | — | 2 |
+| Shares | 5 | 33 |
 | System Tags | 6 | 22 |
-| **Total** | **42** | **313** |
+| **Total** | **47** | **349** |

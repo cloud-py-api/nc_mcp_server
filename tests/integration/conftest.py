@@ -140,6 +140,11 @@ async def _clean_test_data(_cleanup_config: Config) -> AsyncGenerator[None]:
 async def _cleanup(client: NextcloudClient) -> None:
     """Remove all test artifacts from Nextcloud."""
     with contextlib.suppress(Exception):
+        shares = await client.ocs_get("apps/files_sharing/api/v1/shares")
+        for share in shares:
+            with contextlib.suppress(Exception):
+                await client.ocs_delete(f"apps/files_sharing/api/v1/shares/{share['id']}")
+    with contextlib.suppress(Exception):
         await client.dav_delete(TEST_BASE_DIR)
     with contextlib.suppress(Exception):
         await client.ocs_delete("apps/notifications/api/v2/notifications")

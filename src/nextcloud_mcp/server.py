@@ -11,6 +11,7 @@ from .tools import (
     comments,
     files,
     notifications,
+    shares,
     system_tags,
     talk,
     user_status,
@@ -47,6 +48,7 @@ def create_server(config: Config | None = None) -> FastMCP:
     comments.register(mcp)
     files.register(mcp)
     notifications.register(mcp)
+    shares.register(mcp)
     system_tags.register(mcp)
     talk.register(mcp)
     user_status.register(mcp)
