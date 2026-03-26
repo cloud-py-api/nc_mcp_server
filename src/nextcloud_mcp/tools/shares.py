@@ -90,6 +90,25 @@ def _register_read_tools(mcp: FastMCP) -> None:
         return json.dumps(share, indent=2, default=str)
 
 
+_SUPPORTED_SHARE_TYPES = {0, 1, 3, 4, 6, 10}
+_RECIPIENT_SHARE_TYPES = {0, 1, 4, 6, 10}
+_PASSWORD_SHARE_TYPES = {3, 4}
+
+
+def _validate_create_share(share_type: int, share_with: str, password: str, label: str, public_upload: bool) -> None:
+    if share_type not in _SUPPORTED_SHARE_TYPES:
+        msg = f"Unsupported share_type {share_type}. Valid: 0=user, 1=group, 3=link, 4=email, 6=federated, 10=talk."
+        raise ValueError(msg)
+    if share_type in _RECIPIENT_SHARE_TYPES and not share_with:
+        raise ValueError("share_with is required for user, group, email, federated, and talk room shares.")
+    if password and share_type not in _PASSWORD_SHARE_TYPES:
+        raise ValueError("password is only valid for link (3) and email (4) shares.")
+    if label and share_type != 3:
+        raise ValueError("label is only valid for public link (3) shares.")
+    if public_upload and share_type != 3:
+        raise ValueError("public_upload is only valid for public link (3) shares.")
+
+
 def _register_create_share(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
@@ -126,6 +145,7 @@ def _register_create_share(mcp: FastMCP) -> None:
         Returns:
             JSON object with the created share details including id, url (for links), token, etc.
         """
+        _validate_create_share(share_type, share_with, password, label, public_upload)
         client = get_client()
         data: dict[str, str | int] = {"path": path, "shareType": share_type}
         if share_with:
