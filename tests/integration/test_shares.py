@@ -234,7 +234,7 @@ class TestUpdateShare:
         await _setup_share_file(nc_mcp)
         created = json.loads(await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3))
         share_id = int(created["id"])
-        result = await nc_mcp.call("update_share", share_id=share_id, password="newpass123")
+        result = await nc_mcp.call("update_share", share_id=share_id, password="n3wP@ss!xK7#mZ")
         updated = json.loads(result)
         assert updated.get("has_password") is True
 
