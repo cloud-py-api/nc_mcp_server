@@ -33,7 +33,7 @@ def _format_share(share: dict[str, Any]) -> dict[str, Any]:
         result["url"] = share["url"]
     if share.get("password"):
         result["has_password"] = True
-    if share.get("hide_download"):
+    if "hide_download" in share:
         result["hide_download"] = share["hide_download"]
     return result
 

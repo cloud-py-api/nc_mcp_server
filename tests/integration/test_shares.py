@@ -303,7 +303,7 @@ class TestUpdateShare:
         await nc_mcp.call("update_share", share_id=share_id, hide_download=True)
         result = await nc_mcp.call("update_share", share_id=share_id, hide_download=False)
         updated = json.loads(result)
-        assert not updated.get("hide_download")
+        assert updated["hide_download"] == 0
 
     @pytest.mark.asyncio
     async def test_update_disable_public_upload(self, nc_mcp: McpTestHelper) -> None:
