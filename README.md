@@ -69,6 +69,7 @@ export NEXTCLOUD_PASSWORD=your-app-password  # Use an app password, not your mai
 
 # Optional
 export NEXTCLOUD_MCP_PERMISSIONS=read  # read (default), write, or destructive
+export NEXTCLOUD_MCP_RETRY_MAX=3       # max retries on 429/503 (default: 3, 0 to disable)
 ```
 
 ### Getting an App Password

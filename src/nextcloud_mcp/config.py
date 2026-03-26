@@ -19,6 +19,7 @@ class Config:
         NEXTCLOUD_MCP_PERMISSIONS: Permission level — 'read' (default), 'write', or 'destructive'
         NEXTCLOUD_MCP_HOST: Host to bind HTTP server (default: 0.0.0.0)
         NEXTCLOUD_MCP_PORT: Port for HTTP server (default: 8100)
+        NEXTCLOUD_MCP_RETRY_MAX: Max retries on 429/503 (default: 3, 0 to disable)
     """
 
     nextcloud_url: str = field(default="")
@@ -27,6 +28,7 @@ class Config:
     permission_level: PermissionLevel = field(default=PermissionLevel.READ)
     host: str = field(default="0.0.0.0")
     port: int = field(default=8100)
+    retry_max: int = field(default=3)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -44,6 +46,11 @@ class Config:
 
         host = os.environ.get("NEXTCLOUD_MCP_HOST", "0.0.0.0")
         port = int(os.environ.get("NEXTCLOUD_MCP_PORT", "8100"))
+        retry_raw = os.environ.get("NEXTCLOUD_MCP_RETRY_MAX", "3")
+        try:
+            retry_max = int(retry_raw)
+        except ValueError:
+            raise ValueError(f"Invalid NEXTCLOUD_MCP_RETRY_MAX='{retry_raw}'. Expected integer >= 0.") from None
 
         return cls(
             nextcloud_url=url,
@@ -52,6 +59,7 @@ class Config:
             permission_level=perm,
             host=host,
             port=port,
+            retry_max=max(0, retry_max),
         )
 
     def validate(self) -> None:

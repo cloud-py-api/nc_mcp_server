@@ -106,6 +106,9 @@ venvPath = "."
 venv = "venv"
 reportUnusedFunction = false
 reportPrivateUsage = false
+executionEnvironments = [
+  { root = "tests/test_client_retry.py", reportAttributeAccessIssue = false, reportUnknownMemberType = false }
+]
 
 [tool.pytest]
 ini_options.testpaths = [ "tests" ]

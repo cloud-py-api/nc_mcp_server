@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 import niquests
+from urllib3.util import Retry
 
 from .config import Config
 
@@ -70,14 +71,28 @@ class NextcloudClient:
 
     async def _get_session(self) -> niquests.AsyncSession:
         if self._session is None:
-            self._session = niquests.AsyncSession(
-                auth=(self._config.user, self._config.password),
-                timeout=30,
-                headers={
+            kwargs: dict[str, object] = {
+                "auth": (self._config.user, self._config.password),
+                "timeout": 30,
+                "headers": {
                     "OCS-APIRequest": "true",
                     "Accept": "application/json",
                 },
-            )
+            }
+            if self._config.retry_max > 0:
+                kwargs["retries"] = Retry(
+                    total=self._config.retry_max,
+                    connect=0,
+                    read=0,
+                    other=0,
+                    redirect=0,
+                    status_forcelist=[429, 503],
+                    backoff_factor=1.0,
+                    respect_retry_after_header=True,
+                    allowed_methods=None,
+                    raise_on_status=False,
+                )
+            self._session = niquests.AsyncSession(**kwargs)  # type: ignore[arg-type]
         return self._session
 
     async def close(self) -> None:
