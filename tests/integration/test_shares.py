@@ -239,6 +239,83 @@ class TestUpdateShare:
         assert updated.get("has_password") is True
 
     @pytest.mark.asyncio
+    async def test_update_remove_password(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(
+            await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3, password="s3Cr3t!Pw9#xK")
+        )
+        share_id = int(created["id"])
+        assert created.get("has_password") is True
+        result = await nc_mcp.call("update_share", share_id=share_id, password="")
+        updated = json.loads(result)
+        assert updated.get("has_password") is not True
+
+    @pytest.mark.asyncio
+    async def test_update_remove_expiration(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(
+            await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3, expire_date="2099-12-31")
+        )
+        share_id = int(created["id"])
+        assert created["expiration"] is not None
+        result = await nc_mcp.call("update_share", share_id=share_id, expire_date="")
+        updated = json.loads(result)
+        assert updated["expiration"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_clear_note(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(
+            await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3, note="initial note")
+        )
+        share_id = int(created["id"])
+        assert created["note"] == "initial note"
+        result = await nc_mcp.call("update_share", share_id=share_id, note="")
+        updated = json.loads(result)
+        assert updated["note"] == ""
+
+    @pytest.mark.asyncio
+    async def test_update_clear_label(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(
+            await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3, label="Initial Label")
+        )
+        share_id = int(created["id"])
+        assert created["label"] == "Initial Label"
+        result = await nc_mcp.call("update_share", share_id=share_id, label="")
+        updated = json.loads(result)
+        assert updated["label"] == ""
+
+    @pytest.mark.asyncio
+    async def test_update_enable_hide_download(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3))
+        share_id = int(created["id"])
+        result = await nc_mcp.call("update_share", share_id=share_id, hide_download=True)
+        updated = json.loads(result)
+        assert updated.get("hide_download") == 1
+
+    @pytest.mark.asyncio
+    async def test_update_disable_hide_download(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(await nc_mcp.call("create_share", path=f"/{SHARE_FILE}", share_type=3))
+        share_id = int(created["id"])
+        await nc_mcp.call("update_share", share_id=share_id, hide_download=True)
+        result = await nc_mcp.call("update_share", share_id=share_id, hide_download=False)
+        updated = json.loads(result)
+        assert not updated.get("hide_download")
+
+    @pytest.mark.asyncio
+    async def test_update_disable_public_upload(self, nc_mcp: McpTestHelper) -> None:
+        await _setup_share_file(nc_mcp)
+        created = json.loads(await nc_mcp.call("create_share", path=f"/{SHARE_DIR}", share_type=3, public_upload=True))
+        share_id = int(created["id"])
+        assert created["permissions"] & 4, "Should have create permission"
+        result = await nc_mcp.call("update_share", share_id=share_id, public_upload=False)
+        updated = json.loads(result)
+        assert not (updated["permissions"] & 4), "Create permission should be removed"
+
+    @pytest.mark.asyncio
     async def test_update_nonexistent_share_fails(self, nc_mcp: McpTestHelper) -> None:
         with pytest.raises(ToolError):
             await nc_mcp.call("update_share", share_id=999999, note="test")

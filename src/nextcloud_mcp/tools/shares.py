@@ -151,48 +151,47 @@ def _register_update_share(mcp: FastMCP) -> None:
     @require_permission(PermissionLevel.WRITE)
     async def update_share(
         share_id: int,
-        permissions: int = 0,
-        password: str = "",
-        expire_date: str = "",
-        note: str = "",
-        label: str = "",
-        public_upload: bool = False,
-        hide_download: bool = False,
+        permissions: int | None = None,
+        password: str | None = None,
+        expire_date: str | None = None,
+        note: str | None = None,
+        label: str | None = None,
+        public_upload: bool | None = None,
+        hide_download: bool | None = None,
     ) -> str:
         """Update properties of an existing share.
 
-        Only provided (non-default) parameters are changed. To remove a password or
-        expiration, use delete_share and create a new one.
+        Only provided parameters are changed. Omitted parameters keep their current value.
 
         Args:
             share_id: The numeric share ID to update.
             permissions: New permission flags (1=read, 2=update, 4=create, 8=delete, 16=share).
-            password: Set or change password (link/email shares only).
-            expire_date: Set expiration date in "YYYY-MM-DD" format.
-            note: Set or update the share note.
-            label: Set or update the share label.
-            public_upload: Enable/disable public upload on shared folders (link shares only).
-            hide_download: Hide the download button on public link shares.
+            password: Set or change password (link/email shares only). Pass "" to remove password.
+            expire_date: Set expiration in "YYYY-MM-DD" format. Pass "" to remove expiration.
+            note: Set or update the share note. Pass "" to clear.
+            label: Set or update the share label. Pass "" to clear.
+            public_upload: Enable (true) or disable (false) public upload on shared folders (link shares only).
+            hide_download: Show (false) or hide (true) the download button on public link shares.
 
         Returns:
             JSON object with the updated share details.
         """
         client = get_client()
         data: dict[str, str | int] = {}
-        if permissions > 0:
+        if permissions is not None:
             data["permissions"] = permissions
-        if password:
+        if password is not None:
             data["password"] = password
-        if expire_date:
+        if expire_date is not None:
             data["expireDate"] = expire_date
-        if note:
+        if note is not None:
             data["note"] = note
-        if label:
+        if label is not None:
             data["label"] = label
-        if public_upload:
-            data["publicUpload"] = "true"
-        if hide_download:
-            data["hideDownload"] = "true"
+        if public_upload is not None:
+            data["publicUpload"] = "true" if public_upload else "false"
+        if hide_download is not None:
+            data["hideDownload"] = "true" if hide_download else "false"
         result = await client.ocs_put(f"{SHARES_API}/{share_id}", data=data)
         return json.dumps(_format_share(result), indent=2, default=str)
 
