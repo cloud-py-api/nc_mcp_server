@@ -27,6 +27,7 @@
 - [x] Files Sharing tools: list_shares, get_share, create_share, update_share, delete_share (2026-03-26)
 - [x] OCS error message extraction: surface Nextcloud error messages instead of generic HTTP codes (2026-03-27)
 - [x] Announcement Center tools: list_announcements, create_announcement, delete_announcement (2026-03-27)
+- [x] Files Trashbin tools: list_trash, restore_trash_item, empty_trash (2026-03-27)
 
 ### In Progress
 
@@ -34,7 +35,7 @@
 (none)
 
 ### Next Up
-- Files Trashbin, Versions
+- Files Versions
 
 ## Phases
 
@@ -49,20 +50,22 @@
 
 | Module | Tools | Tests |
 |--------|-------|-------|
-| Files | 8 | 54 |
+| Files | 8 | 47 |
 | Users | 5 | 20 |
 | Notifications | 3 | 11 |
 | Talk | 8 | 48 |
 | Talk Polls | 4 | 32 |
-| Activity | 1 | 18 |
+| Activity | 1 | 20 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
-| Server | — | 7 |
-| Permissions | — | 34 |
-| Announcements | 3 | 28 |
-| Errors | — | 35 |
-| Config | — | 12 |
-| State | — | 2 |
+| Announcements | 3 | 29 |
+| Trashbin | 3 | 22 |
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
-| **Total** | **50** | **411** |
+| Server | — | 7 |
+| Permissions | — | 34 |
+| Errors | — | 16 |
+| Client | — | 29 |
+| Config | — | 17 |
+| State | — | 2 |
+| **Total** | **53** | **444** |

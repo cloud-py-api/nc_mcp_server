@@ -15,6 +15,7 @@ from .tools import (
     shares,
     system_tags,
     talk,
+    trashbin,
     user_status,
     users,
 )
@@ -53,6 +54,7 @@ def create_server(config: Config | None = None) -> FastMCP:
     shares.register(mcp)
     system_tags.register(mcp)
     talk.register(mcp)
+    trashbin.register(mcp)
     user_status.register(mcp)
     users.register(mcp)
 

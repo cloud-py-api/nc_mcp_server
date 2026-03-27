@@ -5,7 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ..annotations import ADDITIVE, DESTRUCTIVE, READONLY
+from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -167,7 +167,7 @@ def _register_create_share(mcp: FastMCP) -> None:
 
 
 def _register_update_share(mcp: FastMCP) -> None:
-    @mcp.tool(annotations=ADDITIVE)
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def update_share(
         share_id: int,
