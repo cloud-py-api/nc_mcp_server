@@ -8,6 +8,7 @@ from .permissions import set_permission_level
 from .state import get_client, get_config, set_state
 from .tools import (
     activity,
+    announcements,
     comments,
     files,
     notifications,
@@ -45,6 +46,7 @@ def create_server(config: Config | None = None) -> FastMCP:
     )
 
     activity.register(mcp)
+    announcements.register(mcp)
     comments.register(mcp)
     files.register(mcp)
     notifications.register(mcp)

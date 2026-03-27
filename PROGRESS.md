@@ -25,6 +25,8 @@
 - [x] get_file returns MCP ImageContent for images (PNG, JPEG, GIF, WebP, BMP, SVG) (2026-03-25)
 - [x] System Tags tools: list_tags, get_file_tags, create_tag, assign_tag, unassign_tag, delete_tag (2026-03-25)
 - [x] Files Sharing tools: list_shares, get_share, create_share, update_share, delete_share (2026-03-26)
+- [x] OCS error message extraction: surface Nextcloud error messages instead of generic HTTP codes (2026-03-27)
+- [x] Announcement Center tools: list_announcements, create_announcement, delete_announcement (2026-03-27)
 
 ### In Progress
 
@@ -32,9 +34,7 @@
 (none)
 
 ### Next Up
-- Announcement Center
 - Files Trashbin, Versions
-- Improve error handling and error messages
 
 ## Phases
 
@@ -59,9 +59,10 @@
 | User Status | 3 | 19 |
 | Server | — | 7 |
 | Permissions | — | 34 |
-| Errors | — | 10 |
+| Announcements | 3 | 28 |
+| Errors | — | 35 |
 | Config | — | 12 |
 | State | — | 2 |
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
-| **Total** | **47** | **358** |
+| **Total** | **50** | **412** |

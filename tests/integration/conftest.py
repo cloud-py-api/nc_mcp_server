@@ -155,3 +155,10 @@ async def _cleanup(client: NextcloudClient) -> None:
         await client.ocs_delete("apps/user_status/api/v1/user_status/message")
     with contextlib.suppress(Exception):
         await client.ocs_put("apps/user_status/api/v1/user_status/status", data={"statusType": "online"})
+    with contextlib.suppress(Exception):
+        announcements = await client.ocs_get("apps/announcementcenter/api/v1/announcements")
+        for ann in announcements:
+            subject = str(ann.get("subject", ""))
+            if subject.startswith("mcp-test-ann"):
+                with contextlib.suppress(Exception):
+                    await client.ocs_delete(f"apps/announcementcenter/api/v1/announcements/{ann['id']}")
