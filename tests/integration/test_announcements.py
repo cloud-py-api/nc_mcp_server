@@ -1,5 +1,6 @@
 """Integration tests for Announcement Center tools against a real Nextcloud instance."""
 
+import contextlib
 import json
 from typing import Any
 
@@ -25,11 +26,17 @@ async def _create_announcement(nc_mcp: McpTestHelper, suffix: str = "") -> dict[
 
 
 async def _cleanup_announcements(nc_mcp: McpTestHelper) -> None:
-    """Delete all test announcements."""
-    result = await nc_mcp.call("list_announcements")
-    for a in json.loads(result)["data"]:
-        if str(a.get("subject", "")).startswith(UNIQUE):
-            await nc_mcp.call("delete_announcement", announcement_id=a["id"])
+    """Delete all test announcements, paginating through all pages."""
+    while True:
+        result = await nc_mcp.call("list_announcements")
+        data = json.loads(result)["data"]
+        deleted = False
+        for a in data:
+            if str(a.get("subject", "")).startswith(UNIQUE):
+                await nc_mcp.call("delete_announcement", announcement_id=a["id"])
+                deleted = True
+        if not deleted:
+            break
 
 
 class TestListAnnouncements:
@@ -96,6 +103,26 @@ class TestListAnnouncements:
         finally:
             await nc_mcp.call("delete_announcement", announcement_id=a1["id"])
             await nc_mcp.call("delete_announcement", announcement_id=a2["id"])
+
+    @pytest.mark.asyncio
+    async def test_multi_page_cleanup(self, nc_mcp: McpTestHelper) -> None:
+        """Create >7 announcements (server page size) and verify paginated cleanup catches all."""
+        await _cleanup_announcements(nc_mcp)
+        created_ids: list[int] = []
+        try:
+            for i in range(9):
+                ann = await _create_announcement(nc_mcp, f"bulk{i}")
+                created_ids.append(ann["id"])
+            first_page = json.loads(await nc_mcp.call("list_announcements"))
+            assert first_page["pagination"]["has_more"] is True
+            await _cleanup_announcements(nc_mcp)
+            result = await nc_mcp.call("list_announcements")
+            remaining = [a for a in json.loads(result)["data"] if str(a.get("subject", "")).startswith(UNIQUE)]
+            assert len(remaining) == 0, f"Leftover test announcements: {[a['subject'] for a in remaining]}"
+        finally:
+            for ann_id in created_ids:
+                with contextlib.suppress(Exception):
+                    await nc_mcp.call("delete_announcement", announcement_id=ann_id)
 
     @pytest.mark.asyncio
     async def test_pagination_info(self, nc_mcp: McpTestHelper) -> None:
