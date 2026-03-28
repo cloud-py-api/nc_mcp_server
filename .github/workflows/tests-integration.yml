@@ -29,6 +29,14 @@ jobs:
           --health-timeout 5s
           --health-retries 30
           --health-start-period 60s
+      smtp4dev:
+        image: rnwood/smtp4dev:latest
+        env:
+          ServerOptions__BasePath: /smtp4dev
+        ports:
+          - 9025:25
+          - 9143:143
+          - 9080:80
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -63,13 +71,24 @@ jobs:
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install spreed" || echo "spreed already installed"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install admin_notifications" || echo "admin_notifications already installed"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install announcementcenter" || echo "announcementcenter already installed"
-          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:list" | head -30
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install mail"
+          SMTP4DEV_IP=$(docker inspect ${{ job.services.smtp4dev.id }} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          echo "smtp4dev IP: $SMTP4DEV_IP"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ mail:account:create admin 'Test Mail' test@localhost $SMTP4DEV_IP 143 none test test $SMTP4DEV_IP 25 none test test"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ mail:account:sync 1"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:list" | head -40
 
       - name: Run integration tests
         env:
           NEXTCLOUD_URL: http://localhost:8080
           NEXTCLOUD_USER: admin
           NEXTCLOUD_PASSWORD: admin
+          SMTP4DEV_HOST: localhost
+          SMTP4DEV_HTTP_PORT: "9080"
+          SMTP4DEV_SMTP_PORT: "9025"
+          MAIL_RECIPIENT: test@localhost
+          NC_CONTAINER: ${{ job.services.nextcloud.id }}
+          MAIL_ACCOUNT_ID: "1"
         run: pytest tests/integration/ -v -m integration --cov=nc_mcp_server --cov-report=xml:coverage-integration.xml
 
       - name: Upload coverage

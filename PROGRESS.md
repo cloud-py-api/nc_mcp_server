@@ -29,6 +29,7 @@
 - [x] Announcement Center tools: list_announcements, create_announcement, delete_announcement (2026-03-27)
 - [x] Files Trashbin tools: list_trash, restore_trash_item, empty_trash (2026-03-27)
 - [x] Files Versions tools: list_versions, restore_version (2026-03-27)
+- [x] Mail tools: list_mail_accounts, list_mailboxes, list_mail_messages, get_mail_message, send_mail (2026-03-28)
 
 ### In Progress
 
@@ -36,7 +37,7 @@
 (none)
 
 ### Next Up
-- Phase 3 — Groupware (Calendar, Contacts, Tasks, Deck, Notes, Mail)
+- Phase 3 — Groupware (Calendar, Contacts, Tasks, Deck, Notes)
 
 ## Phases
 
@@ -64,10 +65,11 @@
 | Versions | 2 | 18 |
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
+| Mail | 5 | 29 |
 | Server | — | 7 |
 | Permissions | — | 34 |
 | Errors | — | 16 |
 | Client | — | 29 |
 | Config | — | 17 |
 | State | — | 2 |
-| **Total** | **55** | **462** |
+| **Total** | **60** | **491** |
