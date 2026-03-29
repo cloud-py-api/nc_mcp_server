@@ -146,6 +146,7 @@ jobs:
           php occ config:system:set ratelimit.protection.enabled --value=false --type=boolean
           php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean
           php occ config:system:set memcache.local --value='\OC\Memcache\APCu'
+          php occ config:system:set filelocking.enabled --value=false --type=boolean
           php occ config:system:set overwrite.cli.url --value="http://localhost:8080"
           php occ app:enable notifications
           php occ app:enable activity
@@ -160,23 +161,8 @@ jobs:
 
       - name: Set up PHP-FPM and nginx
         run: |
-          PHP_VERSION=${{ matrix.php-version }}
-          echo "=== CLI OPcache ==="
-          php -i | grep -E "opcache\.(validate_timestamps|jit_buffer_size|memory_consumption|enable) "
-          echo "=== FPM OPcache (before fix) ==="
-          php-fpm$PHP_VERSION -i 2>/dev/null | grep -E "opcache\.(validate_timestamps|jit_buffer_size|memory_consumption|enable) " || echo "php-fpm -i not available"
-          echo "=== Copying CLI ini to FPM ==="
-          for ini in /etc/php/$PHP_VERSION/cli/conf.d/*opcache*.ini /etc/php/$PHP_VERSION/cli/conf.d/*apcu*.ini; do
-            if [ -f "$ini" ]; then
-              base=$(basename "$ini")
-              echo "  $base -> fpm/conf.d/"
-              sudo cp "$ini" /etc/php/$PHP_VERSION/fpm/conf.d/"$base"
-            fi
-          done
-          sudo cp .github/ci-fpm-pool.conf /etc/php/$PHP_VERSION/fpm/pool.d/nextcloud.conf
-          sudo systemctl restart php$PHP_VERSION-fpm
-          echo "=== FPM OPcache (after fix) ==="
-          php-fpm$PHP_VERSION -i 2>/dev/null | grep -E "opcache\.(validate_timestamps|jit_buffer_size|memory_consumption|enable) " || echo "checking via curl after nginx starts"
+          sudo cp .github/ci-fpm-pool.conf /etc/php/${{ matrix.php-version }}/fpm/pool.d/nextcloud.conf
+          sudo systemctl restart php${{ matrix.php-version }}-fpm
           sudo apt-get -y install nginx > /dev/null 2>&1
           sed "s|NC_ROOT|${{ github.workspace }}/nc-server|" .github/ci-nginx.conf \
             | sudo tee /etc/nginx/sites-enabled/nextcloud.conf > /dev/null
