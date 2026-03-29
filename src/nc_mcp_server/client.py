@@ -152,6 +152,11 @@ class NextcloudClient:
             return True
         return False
 
+    @staticmethod
+    def _looks_like_app_password(password: str) -> bool:
+        """Heuristic: Nextcloud app passwords are exactly 72 alphanumeric characters."""
+        return len(password) == 72 and password.isalnum()
+
     async def _init_session_auth(self) -> None:
         """Authenticate once and try to cache the server session.
 
@@ -161,10 +166,13 @@ class NextcloudClient:
         Subsequent requests reuse the session cookie, which is validated via a
         fast DB lookup instead of bcrypt.
 
-        When the user provides an app password, session caching still works
-        (NC stores the app password in the PHP session), and the overhead of
-        the two init requests is negligible.
+        App passwords are already validated via a fast token lookup (no bcrypt),
+        so session caching is skipped for them — the two init requests would be
+        pure overhead.
         """
+        if self._looks_like_app_password(self._config.password):
+            log.debug("App password detected, skipping session cache")
+            return
         if self._session is None:
             return
         url = f"{self._base_url}/ocs/v2.php/cloud/capabilities"
