@@ -228,6 +228,7 @@ jobs:
           NC_CONTAINER=${{ job.services.nextcloud.id }}
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install spreed" || echo "spreed already installed"
 
       - name: Run user permission tests
         env:
