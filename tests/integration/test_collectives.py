@@ -323,8 +323,12 @@ class TestCollectivePermissions:
     async def test_write_allows_create_but_blocks_trash(self, nc_mcp_write: McpTestHelper) -> None:
         result = await nc_mcp_write.call("create_collective", name=f"{UNIQUE}-perm")
         coll = json.loads(result)
-        with pytest.raises(ToolError, match=r"requires 'destructive' permission"):
-            await nc_mcp_write.call("trash_collective", collective_id=coll["id"])
-        client = nc_mcp_write.client
-        await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/{coll['id']}")
-        await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/trash/{coll['id']}")
+        try:
+            with pytest.raises(ToolError, match=r"requires 'destructive' permission"):
+                await nc_mcp_write.call("trash_collective", collective_id=coll["id"])
+        finally:
+            client = nc_mcp_write.client
+            with contextlib.suppress(Exception):
+                await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/{coll['id']}")
+            with contextlib.suppress(Exception):
+                await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/trash/{coll['id']}")
