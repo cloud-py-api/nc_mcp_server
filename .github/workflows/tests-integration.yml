@@ -82,6 +82,7 @@ jobs:
           NEXTCLOUD_URL: http://localhost:8080
           NEXTCLOUD_USER: admin
           NEXTCLOUD_PASSWORD: ${{ env.NC_APP_PASSWORD }}
+          NEXTCLOUD_MCP_APP_PASSWORD: "true"
           SMTP4DEV_HOST: localhost
           SMTP4DEV_HTTP_PORT: "9080"
           SMTP4DEV_SMTP_PORT: "9025"

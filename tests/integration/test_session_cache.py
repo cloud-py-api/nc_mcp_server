@@ -155,15 +155,22 @@ class TestSessionCacheRegularPassword:
 
 class TestSessionCacheAppPassword:
     @pytest.mark.asyncio
-    async def test_app_password_skips_session_cache(self) -> None:
-        """App passwords keep Basic Auth (no session caching overhead)."""
+    async def test_app_password_skips_session_cache_when_flagged(self) -> None:
+        """With is_app_password=True, Basic Auth is kept (no session caching)."""
         app_pwd = _create_app_password()
-        client = NextcloudClient(_make_config(password=app_pwd))
+        config = _make_config(password=app_pwd)
+        config_with_flag = Config(
+            nextcloud_url=config.nextcloud_url,
+            user=config.user,
+            password=config.password,
+            is_app_password=True,
+        )
+        client = NextcloudClient(config_with_flag)
         try:
             user = await client.ocs_get("cloud/user")
             assert user["id"] == "admin"
             assert client._session is not None
-            assert client._session.auth is not None, "App password should keep Basic Auth, not session cache"
+            assert client._session.auth is not None, "App password should keep Basic Auth when flagged"
         finally:
             await client.close()
 
