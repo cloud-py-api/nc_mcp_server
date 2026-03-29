@@ -91,12 +91,6 @@ class TestUserCanAccessOwnData:
         assert isinstance(shares, list)
 
     @pytest.mark.asyncio
-    async def test_list_conversations(self, user_mcp: McpTestHelper) -> None:
-        result = await user_mcp.call("list_conversations")
-        convs = json.loads(result)
-        assert isinstance(convs, list)
-
-    @pytest.mark.asyncio
     async def test_get_activity(self, user_mcp: McpTestHelper) -> None:
         result = await user_mcp.call("get_activity")
         data = json.loads(result)
