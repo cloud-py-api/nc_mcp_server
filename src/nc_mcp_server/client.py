@@ -1,6 +1,7 @@
 """HTTP client for Nextcloud REST/OCS/DAV APIs."""
 
 import contextlib
+import logging
 import xml.etree.ElementTree as ET
 from typing import Any
 from urllib.parse import quote as url_quote
@@ -9,6 +10,8 @@ import niquests
 from urllib3.util import Retry
 
 from .config import Config
+
+log = logging.getLogger(__name__)
 
 
 class NextcloudError(Exception):
@@ -98,29 +101,68 @@ class NextcloudClient:
 
     async def _get_session(self) -> niquests.AsyncSession:
         if self._session is None:
-            kwargs: dict[str, object] = {
-                "auth": (self._config.user, self._config.password),
-                "timeout": 30,
-                "headers": {
-                    "OCS-APIRequest": "true",
-                    "Accept": "application/json",
-                },
-            }
-            if self._config.retry_max > 0:
-                kwargs["retries"] = Retry(
-                    total=self._config.retry_max,
-                    connect=0,
-                    read=0,
-                    other=0,
-                    redirect=0,
-                    status_forcelist=[429, 503],
-                    backoff_factor=1.0,
-                    respect_retry_after_header=True,
-                    allowed_methods=None,
-                    raise_on_status=False,
-                )
-            self._session = niquests.AsyncSession(**kwargs)  # type: ignore[arg-type]
+            self._session = self._build_session()
+            await self._init_session_auth()
         return self._session
+
+    def _build_session(self) -> niquests.AsyncSession:
+        kwargs: dict[str, object] = {
+            "auth": (self._config.user, self._config.password),
+            "timeout": 30,
+            "headers": {
+                "OCS-APIRequest": "true",
+                "Accept": "application/json",
+            },
+        }
+        if self._config.retry_max > 0:
+            kwargs["retries"] = Retry(
+                total=self._config.retry_max,
+                connect=0,
+                read=0,
+                other=0,
+                redirect=0,
+                status_forcelist=[429, 503],
+                backoff_factor=1.0,
+                respect_retry_after_header=True,
+                allowed_methods=None,
+                raise_on_status=False,
+            )
+        return niquests.AsyncSession(**kwargs)  # type: ignore[arg-type]
+
+    async def _init_session_auth(self) -> None:
+        """Authenticate once and try to cache the server session.
+
+        Nextcloud hashes the password (bcrypt) on every Basic Auth request.
+        By sending ``cookie_test=test`` with the first request, we trigger NC
+        to create a session token (see ``Session::supportsCookies``).
+        Subsequent requests reuse the session cookie, which is validated via a
+        fast DB lookup instead of bcrypt.
+
+        When the user provides an app password, NC does NOT create a session
+        token (the app password itself is the fast token).  In that case we
+        detect the missing session and keep Basic Auth in place — app passwords
+        are already fast, so there is nothing to optimise.
+        """
+        if self._session is None:
+            return
+        url = f"{self._base_url}/ocs/v2.php/cloud/capabilities"
+        try:
+            self._session.cookies.set("cookie_test", "test")  # type: ignore[union-attr]
+            resp = await self._session.get(url)
+            if not resp.ok:
+                return
+        except (niquests.ConnectionError, niquests.Timeout):
+            return
+        saved_auth = self._session.auth
+        self._session.auth = None
+        try:
+            probe = await self._session.get(url)
+            if probe.ok:
+                log.debug("Session cookie cached, disabled Basic Auth for subsequent requests")
+                return
+        except (niquests.ConnectionError, niquests.Timeout):
+            pass
+        self._session.auth = saved_auth
 
     async def close(self) -> None:
         """Close the HTTP session."""
