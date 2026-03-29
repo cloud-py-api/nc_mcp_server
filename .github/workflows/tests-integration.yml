@@ -70,6 +70,7 @@ jobs:
           $OCC "php occ config:system:set ratelimit_overwrite files_sharing.shareapi.createshare user period --value=60 --type=integer"
           $OCC "php occ app:install spreed" || echo "spreed already installed"
           $OCC "php occ app:install announcementcenter" || echo "announcementcenter already installed"
+          $OCC "php occ app:install collectives" || echo "collectives already installed"
           $OCC "php occ app:install mail"
           SMTP4DEV_IP=$(docker inspect ${{ job.services.smtp4dev.id }} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
           echo "smtp4dev IP: $SMTP4DEV_IP"
