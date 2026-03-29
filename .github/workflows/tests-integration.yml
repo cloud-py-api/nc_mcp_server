@@ -216,8 +216,15 @@ jobs:
         if: failure()
         run: |
           echo "=== Nextcloud log ==="
-          cat nc-server/data/nextcloud.log 2>/dev/null | tail -50 || echo "No NC logs"
+          cat nc-server/data/nextcloud.log 2>/dev/null | python3 -c "import sys,json;[print(json.loads(l).get('message','')[:200]) for l in sys.stdin]" 2>/dev/null | tail -20 || echo "No NC logs"
           echo "=== nginx error log ==="
-          sudo cat /var/log/nginx/error.log 2>/dev/null | tail -30 || echo "No nginx logs"
+          sudo cat /var/log/nginx/error.log 2>/dev/null | tail -20 || echo "No nginx logs"
           echo "=== PHP-FPM log ==="
-          sudo cat /var/log/php${{ matrix.php-version }}-fpm.log 2>/dev/null | tail -30 || echo "No FPM logs"
+          sudo journalctl -u php${{ matrix.php-version }}-fpm --no-pager -n 20 2>/dev/null || echo "No FPM journal"
+          echo "=== File permissions ==="
+          ls -la nc-server/data/ 2>/dev/null | head -5
+          ls -la /run/php/ 2>/dev/null | head -5
+          echo "=== FPM pool status ==="
+          sudo systemctl status php${{ matrix.php-version }}-fpm --no-pager 2>/dev/null | tail -10
+          echo "=== Quick WebDAV test ==="
+          curl -v -u admin:admin -X PUT -d "test" http://localhost:8080/remote.php/dav/files/admin/debug-test.txt 2>&1 | tail -20
