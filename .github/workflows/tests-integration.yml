@@ -38,9 +38,9 @@ jobs:
           - 9143:143
           - 9080:80
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
           cache: pip
@@ -95,7 +95,7 @@ jobs:
         run: pytest tests/integration/ -v -m integration --ignore=tests/integration/test_session_cache.py --cov=nc_mcp_server --cov-report=xml:coverage-integration.xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
         with:
           files: coverage-integration.xml
           flags: integration,nc${{ matrix.nextcloud-version }}
@@ -130,9 +130,9 @@ jobs:
           --health-retries 30
           --health-start-period 60s
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
           cache: pip
@@ -166,7 +166,7 @@ jobs:
         run: pytest tests/integration/test_session_cache.py -v -m integration --cov=nc_mcp_server --cov-report=xml:coverage-session-cache.xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
         with:
           files: coverage-session-cache.xml
           flags: session-cache
