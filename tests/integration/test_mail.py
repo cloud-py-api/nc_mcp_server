@@ -50,15 +50,20 @@ def _send_test_email(subject: str, body: str = "test body", to: str = MAIL_RECIP
 
 def _sync_mail_account(account_id: int) -> None:
     """Trigger a mailbox sync so new messages appear in the NC database."""
-    container = os.environ.get("NC_CONTAINER", "ncmcp-nextcloud-1")
-    cmd = f"php occ mail:account:sync {account_id}"
-    result = subprocess.run(
-        ["docker", "exec", container, "su", "-s", "/bin/bash", "www-data", "-c", cmd],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    nc_server_dir = os.environ.get("NC_SERVER_DIR", "")
+    if nc_server_dir:
+        args = ["php", "occ", "mail:account:sync", str(account_id)]
+        result = subprocess.run(args, capture_output=True, text=True, timeout=30, check=False, cwd=nc_server_dir)
+    else:
+        container = os.environ.get("NC_CONTAINER", "ncmcp-nextcloud-1")
+        cmd = f"php occ mail:account:sync {account_id}"
+        result = subprocess.run(
+            ["docker", "exec", container, "su", "-s", "/bin/bash", "www-data", "-c", cmd],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
     if result.returncode != 0:
         raise AssertionError(f"mail:account:sync {account_id} failed: {result.stderr}")
 

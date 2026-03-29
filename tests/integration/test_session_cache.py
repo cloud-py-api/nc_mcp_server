@@ -24,50 +24,45 @@ def _make_config(password: str = "admin") -> Config:
     return config
 
 
+def _run_occ(command: str) -> subprocess.CompletedProcess[str]:
+    """Run a Nextcloud occ command. Supports bare-metal (NC_SERVER_DIR) and Docker (NC_CONTAINER)."""
+    nc_server_dir = os.environ.get("NC_SERVER_DIR", "")
+    nc_container = os.environ.get("NC_CONTAINER", "")
+    if nc_server_dir:
+        args = ["php", "occ", *command.split()]
+        return subprocess.run(args, capture_output=True, text=True, timeout=15, check=False, cwd=nc_server_dir)
+    if nc_container:
+        args = [
+            "docker",
+            "exec",
+            nc_container,
+            "su",
+            "-s",
+            "/bin/bash",
+            "www-data",
+            "-c",
+            f"php -d xdebug.mode=off occ {command}",
+        ]
+    else:
+        args = [
+            "docker",
+            "exec",
+            "ncmcp-nextcloud-1",
+            "sudo",
+            "-u",
+            "www-data",
+            "php",
+            "-d",
+            "xdebug.mode=off",
+            "occ",
+            *command.split(),
+        ]
+    return subprocess.run(args, capture_output=True, text=True, timeout=15, check=False)
+
+
 def _create_app_password() -> str:
     """Create a fresh app password via occ CLI."""
-    nc_container = os.environ.get("NC_CONTAINER", "")
-    if nc_container:
-        result = subprocess.run(
-            [
-                "docker",
-                "exec",
-                nc_container,
-                "su",
-                "-s",
-                "/bin/bash",
-                "www-data",
-                "-c",
-                "php -d xdebug.mode=off occ user:auth-tokens:add --name pytest-session-test admin",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-    else:
-        result = subprocess.run(
-            [
-                "docker",
-                "exec",
-                "ncmcp-nextcloud-1",
-                "sudo",
-                "-u",
-                "www-data",
-                "php",
-                "-d",
-                "xdebug.mode=off",
-                "occ",
-                "user:auth-tokens:add",
-                "--name",
-                "pytest-session-test",
-                "admin",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
+    result = _run_occ("user:auth-tokens:add --name pytest-session-test admin")
     for line in result.stdout.splitlines():
         token = line.strip()
         if len(token) == 72 and token.isalnum():
@@ -212,35 +207,7 @@ class TestSessionCacheAppPassword:
 
 
 def _occ(command: str) -> str:
-    nc_container = os.environ.get("NC_CONTAINER", "")
-    if nc_container:
-        args = [
-            "docker",
-            "exec",
-            nc_container,
-            "su",
-            "-s",
-            "/bin/bash",
-            "www-data",
-            "-c",
-            f"php -d xdebug.mode=off occ {command}",
-        ]
-    else:
-        args = [
-            "docker",
-            "exec",
-            "ncmcp-nextcloud-1",
-            "sudo",
-            "-u",
-            "www-data",
-            "php",
-            "-d",
-            "xdebug.mode=off",
-            "occ",
-            *command.split(),
-        ]
-    result = subprocess.run(args, capture_output=True, text=True, timeout=15, check=False)
-    return result.stdout.strip()
+    return _run_occ(command).stdout.strip()
 
 
 class TestSessionExpiryRecovery:
