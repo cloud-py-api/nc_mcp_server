@@ -178,3 +178,73 @@ jobs:
         if: failure()
         run: |
           docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | tail -50 || echo "No logs found"
+
+  test-user-permissions:
+    name: User permissions (NC ${{ matrix.nextcloud-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        nextcloud-version: ["32", "33"]
+    services:
+      nextcloud:
+        image: nextcloud:${{ matrix.nextcloud-version }}
+        env:
+          SQLITE_DATABASE: nextcloud
+          NEXTCLOUD_ADMIN_USER: admin
+          NEXTCLOUD_ADMIN_PASSWORD: admin
+        ports:
+          - 8080:80
+        options: >-
+          --health-cmd "curl -f http://localhost/status.php || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Wait for Nextcloud
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/status.php | python3 -c "import sys,json; sys.exit(0 if json.load(sys.stdin)['installed'] else 1)" 2>/dev/null; then
+              echo "Nextcloud is ready"
+              break
+            fi
+            echo "Waiting... ($i)"
+            sleep 3
+          done
+
+      - name: Configure Nextcloud for testing
+        run: |
+          NC_CONTAINER=${{ job.services.nextcloud.id }}
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
+
+      - name: Run user permission tests
+        env:
+          NEXTCLOUD_URL: http://localhost:8080
+          NEXTCLOUD_USER: admin
+          NEXTCLOUD_PASSWORD: admin
+        run: pytest tests/integration/test_user_permissions.py -v -m integration --cov=nc_mcp_server --cov-report=xml:coverage-user-perms.xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
+        with:
+          files: coverage-user-perms.xml
+          flags: user-permissions
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Dump Nextcloud logs on failure
+        if: failure()
+        run: |
+          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | tail -50 || echo "No logs found"

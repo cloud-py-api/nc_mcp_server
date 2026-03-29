@@ -9,6 +9,7 @@ from .state import get_client, get_config, set_state
 from .tools import (
     activity,
     announcements,
+    app_management,
     collectives,
     comments,
     files,
@@ -51,6 +52,7 @@ def create_server(config: Config | None = None) -> FastMCP:
 
     activity.register(mcp)
     announcements.register(mcp)
+    app_management.register(mcp)
     collectives.register(mcp)
     comments.register(mcp)
     files.register(mcp)
