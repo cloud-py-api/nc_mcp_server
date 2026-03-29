@@ -1,15 +1,15 @@
 # Nextcloud MCP Server
 
-[![Lint](https://github.com/cloud-py-api/nc-mcp-server/actions/workflows/lint.yml/badge.svg)](https://github.com/cloud-py-api/nc-mcp-server/actions/workflows/lint.yml)
-[![Unit Tests](https://github.com/cloud-py-api/nc-mcp-server/actions/workflows/tests-unit.yml/badge.svg)](https://github.com/cloud-py-api/nc-mcp-server/actions/workflows/tests-unit.yml)
-[![Integration Tests](https://github.com/cloud-py-api/nc-mcp-server/actions/workflows/tests-integration.yml/badge.svg)](https://github.com/cloud-py-api/nc-mcp-server/actions/workflows/tests-integration.yml)
-[![codecov](https://codecov.io/gh/cloud-py-api/nc-mcp-server/graph/badge.svg)](https://codecov.io/gh/cloud-py-api/nc-mcp-server)
+[![Lint](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/lint.yml/badge.svg)](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/lint.yml)
+[![Unit Tests](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/tests-unit.yml/badge.svg)](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/tests-unit.yml)
+[![Integration Tests](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/tests-integration.yml/badge.svg)](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/tests-integration.yml)
+[![codecov](https://codecov.io/gh/cloud-py-api/nc_mcp_server/graph/badge.svg)](https://codecov.io/gh/cloud-py-api/nc_mcp_server)
 
 ![NextcloudVersion](https://img.shields.io/badge/Nextcloud-32%20%7C%2033-blue)
 ![PythonVersion](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)
 [![Python](https://img.shields.io/pypi/implementation/nc-mcp-server)](https://pypi.org/project/nc-mcp-server/)
 [![PyPI](https://img.shields.io/pypi/v/nc-mcp-server.svg)](https://pypi.org/project/nc-mcp-server/)
-[![License: MIT](https://img.shields.io/github/license/cloud-py-api/nc-mcp-server)](https://github.com/cloud-py-api/nc-mcp-server/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/github/license/cloud-py-api/nc_mcp_server)](https://github.com/cloud-py-api/nc_mcp_server/blob/main/LICENSE)
 
 > **Experimental** — This repository is fully maintained by AI (Claude). It serves as an experiment in autonomous AI-driven open-source development.
 
@@ -52,8 +52,8 @@ uvx nc-mcp-server
 
 Or from source:
 ```bash
-git clone https://github.com/cloud-py-api/nc-mcp-server.git
-cd nc-mcp-server
+git clone https://github.com/cloud-py-api/nc_mcp_server.git
+cd nc_mcp_server
 pip install -e .
 ```
 
@@ -207,8 +207,8 @@ nc-mcp-server
 
 ```bash
 # Clone and install
-git clone https://github.com/cloud-py-api/nc-mcp-server.git
-cd nc-mcp-server
+git clone https://github.com/cloud-py-api/nc_mcp_server.git
+cd nc_mcp_server
 python3 -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
 
