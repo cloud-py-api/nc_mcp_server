@@ -98,6 +98,16 @@ jobs:
           git clone --depth 1 --branch main https://github.com/nextcloud/announcementcenter.git apps/announcementcenter
           git clone --depth 1 --branch main https://github.com/nextcloud/mail.git apps/mail
 
+      - name: Install app dependencies
+        working-directory: nc-server
+        run: |
+          for app in apps/notifications apps/activity apps/spreed apps/announcementcenter apps/mail; do
+            if [ -f "$app/composer.json" ]; then
+              echo "Installing composer deps for $app"
+              composer install --no-dev --working-dir="$app" 2>&1 | tail -3
+            fi
+          done
+
       - name: Set up Nextcloud
         working-directory: nc-server
         run: |
