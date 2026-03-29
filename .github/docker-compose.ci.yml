@@ -1,12 +1,28 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: nextcloud
+    tmpfs:
+      - /var/lib/postgresql/data
+
   nextcloud:
     image: nextcloud:${NC_VERSION:-33}-fpm
     environment:
-      SQLITE_DATABASE: nextcloud
+      POSTGRES_HOST: db
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: nextcloud
       NEXTCLOUD_ADMIN_USER: admin
       NEXTCLOUD_ADMIN_PASSWORD: admin
+    depends_on:
+      - db
     volumes:
       - nextcloud:/var/www/html
+      - ./php-ci.ini:/usr/local/etc/php/conf.d/99-ci-perf.ini:ro
+      - ./fpm-ci.conf:/usr/local/etc/php-fpm.d/zz-ci.conf:ro
 
   nginx:
     image: nginx:alpine
