@@ -53,7 +53,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives")
-        collectives = [_format_collective(c) for c in data.get("collectives", data if isinstance(data, list) else [])]
+        collectives = [_format_collective(c) for c in data["collectives"]]
         return json.dumps(collectives, indent=2, default=str)
 
     @mcp.tool(annotations=READONLY)
@@ -72,7 +72,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives/{collective_id}/pages")
-        pages = [_format_page(p) for p in data.get("pages", data if isinstance(data, list) else [])]
+        pages = [_format_page(p) for p in data["pages"]]
         return json.dumps(pages, indent=2, default=str)
 
     @mcp.tool(annotations=READONLY)
@@ -91,7 +91,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives/{collective_id}/pages/{page_id}")
-        page = data.get("page", data)
+        page = data["page"]
         return json.dumps(_format_page(page), indent=2, default=str)
 
 
@@ -118,7 +118,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         if emoji:
             post_data["emoji"] = emoji
         data = await client.ocs_post_json(f"{API}/collectives", json_data=post_data)
-        collective = data.get("collective", data)
+        collective = data["collective"]
         return json.dumps(_format_collective(collective), indent=2, default=str)
 
     @mcp.tool(annotations=ADDITIVE)
@@ -146,7 +146,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             f"{API}/collectives/{collective_id}/pages/{parent_id}",
             json_data={"title": title},
         )
-        page = data.get("page", data)
+        page = data["page"]
         return json.dumps(_format_page(page), indent=2, default=str)
 
 
@@ -183,7 +183,7 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_patch(f"{API}/collectives/trash/{collective_id}")
-        collective = data.get("collective", data)
+        collective = data["collective"]
         return json.dumps(_format_collective(collective), indent=2, default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
@@ -238,7 +238,7 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_patch(f"{API}/collectives/{collective_id}/pages/trash/{page_id}")
-        page = data.get("page", data)
+        page = data["page"]
         return json.dumps(_format_page(page), indent=2, default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
