@@ -134,10 +134,6 @@ jobs:
             fi
           done
 
-      - name: Optimize autoloader
-        working-directory: nc-server
-        run: composer dump-autoload --classmap-authoritative
-
       - name: Set up Nextcloud
         working-directory: nc-server
         run: |
