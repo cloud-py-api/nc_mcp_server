@@ -1,5 +1,6 @@
 """Integration tests for session-based auth caching in NextcloudClient."""
 
+import asyncio
 import os
 import subprocess
 
@@ -208,3 +209,73 @@ class TestSessionCacheAppPassword:
             assert "app-pwd-session-test" in subjects
         finally:
             await client.close()
+
+
+def _occ(command: str) -> str:
+    nc_container = os.environ.get("NC_CONTAINER", "")
+    if nc_container:
+        args = [
+            "docker",
+            "exec",
+            nc_container,
+            "su",
+            "-s",
+            "/bin/bash",
+            "www-data",
+            "-c",
+            f"php -d xdebug.mode=off occ {command}",
+        ]
+    else:
+        args = [
+            "docker",
+            "exec",
+            "ncmcp-nextcloud-1",
+            "sudo",
+            "-u",
+            "www-data",
+            "php",
+            "-d",
+            "xdebug.mode=off",
+            "occ",
+            *command.split(),
+        ]
+    result = subprocess.run(args, capture_output=True, text=True, timeout=15, check=False)
+    return result.stdout.strip()
+
+
+class TestSessionExpiryRecovery:
+    @pytest.mark.asyncio
+    async def test_recovers_after_session_expires(self) -> None:
+        """After NC session_lifetime expires, client should re-authenticate transparently."""
+        _occ("config:system:set session_lifetime --value=2 --type=integer")
+        try:
+            client = NextcloudClient(_make_config())
+            try:
+                user = await client.ocs_get("cloud/user")
+                assert user["id"] == "admin"
+                assert client._session is not None
+                assert client._session.auth is None, "Session should be cached"
+                await asyncio.sleep(4)
+                user = await client.ocs_get("cloud/user")
+                assert user["id"] == "admin"
+            finally:
+                await client.close()
+        finally:
+            _occ("config:system:delete session_lifetime")
+
+    @pytest.mark.asyncio
+    async def test_webdav_recovers_after_session_expires(self) -> None:
+        """WebDAV operations should also recover after session expiry."""
+        _occ("config:system:set session_lifetime --value=2 --type=integer")
+        try:
+            client = NextcloudClient(_make_config())
+            try:
+                await client.dav_mkcol(TEST_BASE_DIR)
+                await asyncio.sleep(4)
+                entries = await client.dav_propfind("/")
+                assert isinstance(entries, list)
+                assert len(entries) >= 1
+            finally:
+                await client.close()
+        finally:
+            _occ("config:system:delete session_lifetime")

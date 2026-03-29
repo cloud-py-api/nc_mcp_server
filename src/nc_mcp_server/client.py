@@ -105,6 +105,17 @@ class NextcloudClient:
             await self._init_session_auth()
         return self._session
 
+    @property
+    def _session_is_cached(self) -> bool:
+        return self._session is not None and self._session.auth is None
+
+    async def _reset_session(self) -> None:
+        """Discard the current session and create a fresh one with Basic Auth."""
+        if self._session:
+            await self._session.close()
+        self._session = self._build_session()
+        await self._init_session_auth()
+
     def _build_session(self) -> niquests.AsyncSession:
         kwargs: dict[str, object] = {
             "auth": (self._config.user, self._config.password),
@@ -129,6 +140,18 @@ class NextcloudClient:
             )
         return niquests.AsyncSession(**kwargs)  # type: ignore[arg-type]
 
+    async def _should_retry_auth(self, response: niquests.Response) -> bool:
+        """Check if a 401 response is due to an expired cached session.
+
+        If so, resets the session (re-authenticates) and returns True so the
+        caller can retry the request once.
+        """
+        if response.status_code == 401 and self._session_is_cached:
+            log.debug("Session expired (401), re-authenticating")
+            await self._reset_session()
+            return True
+        return False
+
     async def _init_session_auth(self) -> None:
         """Authenticate once and try to cache the server session.
 
@@ -150,7 +173,7 @@ class NextcloudClient:
             resp = await self._session.get(url)
             if not resp.ok:
                 return
-        except (niquests.ConnectionError, niquests.Timeout):
+        except OSError:
             return
         saved_auth = self._session.auth
         self._session.auth = None
@@ -159,9 +182,18 @@ class NextcloudClient:
             if probe.ok:
                 log.debug("Session cookie cached, disabled Basic Auth for subsequent requests")
                 return
-        except (niquests.ConnectionError, niquests.Timeout):
+        except OSError:
             pass
         self._session.auth = saved_auth
+
+    async def _do_request(self, method: str, url: str, **kwargs: Any) -> niquests.Response:
+        """Execute an HTTP request, retrying once if a cached session expired."""
+        session = await self._get_session()
+        response = await session.request(method, url, **kwargs)
+        if await self._should_retry_auth(response):
+            session = await self._get_session()
+            response = await session.request(method, url, **kwargs)
+        return response
 
     async def close(self) -> None:
         """Close the HTTP session."""
@@ -173,45 +205,40 @@ class NextcloudClient:
 
     async def ocs_get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """Make an OCS GET request and return the data portion."""
-        session = await self._get_session()
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await session.get(url, params=params or {})
+        response = await self._do_request("GET", url, params=params or {})
         _raise_for_ocs_status(response, f"OCS GET {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
     async def ocs_post(self, path: str, data: dict[str, Any] | None = None) -> Any:
         """Make an OCS POST request and return the data portion."""
-        session = await self._get_session()
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await session.post(url, data=data or {})
+        response = await self._do_request("POST", url, data=data or {})
         _raise_for_ocs_status(response, f"OCS POST {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
     async def ocs_post_json(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
         """Make an OCS POST request with a JSON body and return the data portion."""
-        session = await self._get_session()
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await session.post(url, json=json_data or {})
+        response = await self._do_request("POST", url, json=json_data or {})
         _raise_for_ocs_status(response, f"OCS POST {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
     async def ocs_put(self, path: str, data: dict[str, Any] | None = None) -> Any:
         """Make an OCS PUT request and return the data portion."""
-        session = await self._get_session()
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await session.put(url, data=data or {})
+        response = await self._do_request("PUT", url, data=data or {})
         _raise_for_ocs_status(response, f"OCS PUT {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
     async def ocs_delete(self, path: str) -> Any:
         """Make an OCS DELETE request and return the data portion (if any)."""
-        session = await self._get_session()
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await session.delete(url)
+        response = await self._do_request("DELETE", url)
         _raise_for_ocs_status(response, f"OCS DELETE {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
@@ -220,10 +247,9 @@ class NextcloudClient:
 
     async def dav_propfind(self, path: str, depth: int = 1) -> list[dict[str, Any]]:
         """PROPFIND on a WebDAV path. Returns list of file/folder entries."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
-        response = await session.request(
+        response = await self._do_request(
             "PROPFIND",
             url,
             data=PROPFIND_BODY,
@@ -238,10 +264,9 @@ class NextcloudClient:
 
     async def dav_get(self, path: str) -> tuple[bytes, str]:
         """GET a file's content via WebDAV. Returns (content, content_type)."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
-        response = await session.get(url)
+        response = await self._do_request("GET", url)
         _raise_for_status(response, f"Get file '{path}'")
         ct = response.headers.get("content-type", "application/octet-stream")
         content_type = str(ct).split(";")[0].strip()
@@ -249,35 +274,31 @@ class NextcloudClient:
 
     async def dav_put(self, path: str, content: bytes, content_type: str = "application/octet-stream") -> None:
         """PUT (upload/overwrite) a file via WebDAV."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
-        response = await session.put(url, data=content, headers={"Content-Type": content_type})
+        response = await self._do_request("PUT", url, data=content, headers={"Content-Type": content_type})
         _raise_for_status(response, f"Upload file '{path}'")
 
     async def dav_delete(self, path: str) -> None:
         """DELETE a file or folder via WebDAV."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
-        response = await session.delete(url)
+        response = await self._do_request("DELETE", url)
         _raise_for_status(response, f"Delete '{path}'")
 
     async def dav_mkcol(self, path: str) -> None:
         """MKCOL (create directory) via WebDAV."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
-        response = await session.request("MKCOL", url)
+        response = await self._do_request("MKCOL", url)
         _raise_for_status(response, f"Create directory '{path}'")
 
     async def dav_copy(self, source: str, destination: str) -> None:
         """COPY a file or folder via WebDAV."""
-        session = await self._get_session()
         user = self._config.user
         src_url = f"{self._base_url}/remote.php/dav/files/{user}/{source.lstrip('/')}"
         dest_url = f"{self._base_url}/remote.php/dav/files/{user}/{destination.lstrip('/')}"
-        response = await session.request(
+        response = await self._do_request(
             "COPY",
             src_url,
             headers={"Destination": dest_url, "Overwrite": "F"},
@@ -286,11 +307,10 @@ class NextcloudClient:
 
     async def dav_move(self, source: str, destination: str) -> None:
         """MOVE a file or folder via WebDAV."""
-        session = await self._get_session()
         user = self._config.user
         src_url = f"{self._base_url}/remote.php/dav/files/{user}/{source.lstrip('/')}"
         dest_url = f"{self._base_url}/remote.php/dav/files/{user}/{destination.lstrip('/')}"
-        response = await session.request(
+        response = await self._do_request(
             "MOVE",
             src_url,
             headers={"Destination": dest_url, "Overwrite": "F"},
@@ -301,7 +321,6 @@ class NextcloudClient:
 
     async def trashbin_propfind(self) -> str:
         """PROPFIND on the trashbin root. Returns raw XML text."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/trashbin/{user}/trash/"
         body = (
@@ -313,7 +332,7 @@ class NextcloudClient:
             "<nc:trashbin-original-location/><nc:trashbin-deletion-time/>"
             "</d:prop></d:propfind>"
         )
-        response = await session.request(
+        response = await self._do_request(
             "PROPFIND",
             url,
             data=body,
@@ -324,17 +343,15 @@ class NextcloudClient:
 
     async def trashbin_restore(self, trash_path: str) -> None:
         """Restore a trashed item by MOVEing it to the restore folder."""
-        session = await self._get_session()
         user = self._config.user
         encoded = url_quote(trash_path, safe="/")
         src = f"{self._base_url}/remote.php/dav/trashbin/{user}/trash/{encoded}"
         dest = f"{self._base_url}/remote.php/dav/trashbin/{user}/restore/{encoded}"
-        response = await session.request("MOVE", src, headers={"Destination": dest})
+        response = await self._do_request("MOVE", src, headers={"Destination": dest})
         _raise_for_status(response, f"Restore '{trash_path}'")
 
     async def versions_propfind(self, file_id: int) -> str:
         """PROPFIND on the versions collection for a file. Returns raw XML text."""
-        session = await self._get_session()
         user = self._config.user
         url = f"{self._base_url}/remote.php/dav/versions/{user}/versions/{file_id}/"
         body = (
@@ -345,7 +362,7 @@ class NextcloudClient:
             "<nc:version-author/><nc:version-label/>"
             "</d:prop></d:propfind>"
         )
-        response = await session.request(
+        response = await self._do_request(
             "PROPFIND",
             url,
             data=body,
@@ -356,20 +373,18 @@ class NextcloudClient:
 
     async def versions_restore(self, file_id: int, version_id: str) -> None:
         """Restore a file version by MOVEing it to the restore folder."""
-        session = await self._get_session()
         user = self._config.user
         src = f"{self._base_url}/remote.php/dav/versions/{user}/versions/{file_id}/{version_id}"
         dest = f"{self._base_url}/remote.php/dav/versions/{user}/restore/target"
-        response = await session.request("MOVE", src, headers={"Destination": dest})
+        response = await self._do_request("MOVE", src, headers={"Destination": dest})
         _raise_for_status(response, f"Restore version '{version_id}' of file {file_id}")
 
     async def trashbin_delete(self, trash_path: str = "") -> None:
         """Delete a single item or empty the entire trash (if path is empty)."""
-        session = await self._get_session()
         user = self._config.user
         encoded = url_quote(trash_path, safe="/") if trash_path else ""
         url = f"{self._base_url}/remote.php/dav/trashbin/{user}/trash/{encoded}"
-        response = await session.delete(url)
+        response = await self._do_request("DELETE", url)
         _raise_for_status(response, "Empty trash" if not trash_path else f"Delete '{trash_path}' from trash")
 
     # --- Generic DAV ---
@@ -383,9 +398,8 @@ class NextcloudClient:
         context: str = "",
     ) -> niquests.Response:
         """Make a raw DAV request and return the response."""
-        session = await self._get_session()
         url = f"{self._base_url}/remote.php/dav/{path.lstrip('/')}"
-        response = await session.request(method, url, data=body, headers=headers or {})
+        response = await self._do_request(method, url, data=body, headers=headers or {})
         _raise_for_status(response, context or f"DAV {method} {path}")
         return response
 
