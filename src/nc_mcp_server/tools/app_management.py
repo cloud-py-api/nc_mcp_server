@@ -5,7 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ..annotations import ADDITIVE, DESTRUCTIVE, READONLY
+from ..annotations import ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -18,8 +18,6 @@ def _format_app(a: dict[str, Any]) -> dict[str, Any]:
         "name": a.get("name"),
         "summary": a.get("summary"),
         "version": a.get("version"),
-        "enabled": a.get("active"),
-        "type": a.get("type"),
         "author": a.get("author"),
     }
 
@@ -54,14 +52,14 @@ def _register_read_tools(mcp: FastMCP) -> None:
     async def get_app_info(app_id: str) -> str:
         """Get detailed information about an installed Nextcloud app. Requires admin privileges.
 
-        Returns app metadata including name, version, description, author, and status.
+        Returns app metadata including name, version, description, and author.
 
         Args:
             app_id: The app identifier (e.g. "spreed", "mail", "collectives").
                     Use list_apps to find available app IDs.
 
         Returns:
-            JSON object with app details: id, name, summary, version, enabled, type, author.
+            JSON object with app details: id, name, summary, version, author.
         """
         client = get_client()
         data = await client.ocs_get(f"{APPS_API}/{app_id}")
@@ -69,7 +67,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
-    @mcp.tool(annotations=ADDITIVE)
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
     async def enable_app(app_id: str) -> str:
         """Enable a Nextcloud app. Requires admin privileges.

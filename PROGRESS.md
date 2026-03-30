@@ -30,6 +30,9 @@
 - [x] Files Trashbin tools: list_trash, restore_trash_item, empty_trash (2026-03-27)
 - [x] Files Versions tools: list_versions, restore_version (2026-03-27)
 - [x] Mail tools: list_mail_accounts, list_mailboxes, list_mail_messages, get_mail_message, send_mail (2026-03-28)
+- [x] Collectives tools: list_collectives, get_collective_pages, get_collective_page (2026-03-29)
+- [x] App Management tools: list_apps, get_app_info, enable_app, disable_app (2026-03-30)
+- [x] User-permission integration tests: non-admin error handling validation (2026-03-30)
 
 ### In Progress
 
@@ -66,10 +69,13 @@
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
 | Mail | 5 | 29 |
+| Collectives | 3 | 22 |
+| App Management | 4 | 14 |
+| User Permissions | — | 15 |
 | Server | — | 7 |
 | Permissions | — | 34 |
 | Errors | — | 16 |
 | Client | — | 29 |
 | Config | — | 17 |
 | State | — | 2 |
-| **Total** | **60** | **491** |
+| **Total** | **67** | **542** |

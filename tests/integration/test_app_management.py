@@ -58,8 +58,9 @@ class TestGetAppInfo:
     async def test_get_app_has_fields(self, nc_mcp: McpTestHelper) -> None:
         result = await nc_mcp.call("get_app_info", app_id="dav")
         app = json.loads(result)
-        for field in ["id", "name", "version", "enabled"]:
+        for field in ["id", "name", "version", "author"]:
             assert field in app, f"Missing field: {field}"
+            assert app[field] is not None, f"Field '{field}' should not be None"
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_app_raises(self, nc_mcp: McpTestHelper) -> None:
@@ -87,9 +88,9 @@ class TestEnableDisableApp:
 
     @pytest.mark.asyncio
     async def test_disable_returns_confirmation(self, nc_mcp: McpTestHelper) -> None:
-        await nc_mcp.call("disable_app", app_id=SAFE_APP)
         try:
-            pass
+            result = await nc_mcp.call("disable_app", app_id=SAFE_APP)
+            assert "disabled" in result.lower()
         finally:
             await nc_mcp.call("enable_app", app_id=SAFE_APP)
 

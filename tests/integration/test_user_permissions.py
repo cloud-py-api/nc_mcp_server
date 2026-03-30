@@ -11,6 +11,8 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
+from mcp.server.fastmcp.exceptions import ToolError
+
 from nc_mcp_server.client import NextcloudClient, NextcloudError
 from nc_mcp_server.config import Config
 from nc_mcp_server.permissions import PermissionLevel
@@ -112,35 +114,35 @@ class TestUserCanAccessOwnData:
 class TestAdminOnlyToolsReturnErrors:
     @pytest.mark.asyncio
     async def test_list_users_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("list_users")
 
     @pytest.mark.asyncio
     async def test_create_user_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin|sub admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("create_user", user_id="hacker", password=TEST_PASS)
 
     @pytest.mark.asyncio
     async def test_delete_user_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("delete_user", user_id="admin")
 
     @pytest.mark.asyncio
     async def test_list_apps_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("list_apps")
 
     @pytest.mark.asyncio
     async def test_enable_app_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("enable_app", app_id="weather_status")
 
     @pytest.mark.asyncio
     async def test_disable_app_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("disable_app", app_id="weather_status")
 
     @pytest.mark.asyncio
     async def test_get_app_info_forbidden(self, user_mcp: McpTestHelper) -> None:
-        with pytest.raises(Exception, match=r"403|Forbidden|admin"):
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("get_app_info", app_id="files")
