@@ -230,6 +230,17 @@ jobs:
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install spreed" || echo "spreed already installed"
 
+      - name: Warm up OCS API
+        run: |
+          for i in $(seq 1 10); do
+            if curl -sf -u admin:admin -H "OCS-APIRequest: true" http://localhost:8080/ocs/v2.php/cloud/user > /dev/null 2>&1; then
+              echo "OCS API is ready"
+              break
+            fi
+            echo "Waiting for OCS API... ($i)"
+            sleep 3
+          done
+
       - name: Run user permission tests
         env:
           NEXTCLOUD_URL: http://localhost:8080

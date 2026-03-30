@@ -36,10 +36,12 @@ async def _ensure_test_user() -> None:
     )
     client = NextcloudClient(admin_config)
     try:
-        await client.ocs_get(f"cloud/users/{TEST_USER}")
-    except NextcloudError:
-        await client.ocs_post("cloud/users", data={"userid": TEST_USER, "password": TEST_PASS})
-    await client.close()
+        try:
+            await client.ocs_get(f"cloud/users/{TEST_USER}")
+        except NextcloudError:
+            await client.ocs_post("cloud/users", data={"userid": TEST_USER, "password": TEST_PASS})
+    finally:
+        await client.close()
 
 
 @pytest.fixture
