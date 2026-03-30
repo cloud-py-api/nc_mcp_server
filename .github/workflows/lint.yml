@@ -29,7 +29,7 @@ jobs:
         run: ruff format --check .
 
       - name: isort check
-        run: isort --check .
+        run: isort --check src/
 
       - name: Pyright
         run: pyright
