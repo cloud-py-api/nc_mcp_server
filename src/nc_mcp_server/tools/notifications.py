@@ -28,7 +28,7 @@ def register(mcp: FastMCP) -> None:
         data = await client.ocs_get(
             "apps/notifications/api/v2/notifications",
         )
-        return json.dumps(data, indent=2, default=str)
+        return json.dumps(data, default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)

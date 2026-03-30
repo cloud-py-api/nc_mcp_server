@@ -100,7 +100,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"{MAIL_OCS}/account/list")
         accounts = [_format_account(a) for a in data]
-        return json.dumps(accounts, indent=2)
+        return json.dumps(accounts)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -119,7 +119,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"{MAIL_OCS}/ocs/mailboxes", params={"accountId": str(account_id)})
         mailboxes = [_format_mailbox(mb) for mb in data]
-        return json.dumps(mailboxes, indent=2)
+        return json.dumps(mailboxes)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -153,7 +153,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         if messages:
             pagination["next_cursor"] = min(m["id"] for m in messages)
         result: dict[str, Any] = {"data": messages, "pagination": pagination}
-        return json.dumps(result, indent=2)
+        return json.dumps(result)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -171,7 +171,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"{MAIL_OCS}/message/{message_id}")
-        return json.dumps(_format_message_full(data), indent=2)
+        return json.dumps(_format_message_full(data))
 
 
 def _register_write_tools(mcp: FastMCP) -> None:

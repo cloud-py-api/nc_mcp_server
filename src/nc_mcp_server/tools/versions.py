@@ -77,7 +77,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         xml_text = await client.versions_propfind(file_id)
         entries = _parse_versions_xml(xml_text, get_config().user, file_id)
-        return json.dumps(entries, indent=2, default=str)
+        return json.dumps(entries, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:

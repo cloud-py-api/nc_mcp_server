@@ -78,7 +78,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             context="List system tags",
         )
         tags = _parse_tags_xml(response.text or "")
-        return json.dumps(tags, indent=2)
+        return json.dumps(tags)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -102,7 +102,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             context=f"Get tags for file {file_id}",
         )
         tags = _parse_tags_xml(response.text or "")
-        return json.dumps(tags, indent=2)
+        return json.dumps(tags)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -136,7 +136,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         location = str(response.headers.get("Content-Location", ""))
         tag_id_str = location.rstrip("/").split("/")[-1] if location else "0"
         tag_id = int(tag_id_str) if tag_id_str.isdigit() else 0
-        return json.dumps({"id": tag_id, "name": name}, indent=2)
+        return json.dumps({"id": tag_id, "name": name})
 
     @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)

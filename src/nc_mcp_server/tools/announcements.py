@@ -71,7 +71,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
                 "has_more": len(announcements) == page_limit,
             },
         }
-        return json.dumps(result, indent=2, default=str)
+        return json.dumps(result, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -125,7 +125,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             "comments": 1 if comments else 0,
         }
         data = await client.ocs_post(ANNOUNCEMENTS_API, data=post_data)
-        return json.dumps(_format_announcement(data), indent=2, default=str)
+        return json.dumps(_format_announcement(data), default=str)
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:

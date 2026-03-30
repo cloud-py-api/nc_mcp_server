@@ -95,7 +95,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         xml_text = await client.trashbin_propfind()
         entries = _parse_trash_xml(xml_text, get_config().user)
-        return json.dumps(entries, indent=2, default=str)
+        return json.dumps(entries, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:

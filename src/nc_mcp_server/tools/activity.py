@@ -124,4 +124,4 @@ def register(mcp: FastMCP) -> None:
                 "since": next_since,
             },
         }
-        return json.dumps(response, indent=2, default=str)
+        return json.dumps(response, default=str)

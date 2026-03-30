@@ -45,7 +45,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         params = {} if app_filter == "all" else {"filter": app_filter}
         data = await client.ocs_get(APPS_API, params=params)
-        return json.dumps(data["apps"], indent=2)
+        return json.dumps(data["apps"])
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -63,7 +63,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"{APPS_API}/{app_id}")
-        return json.dumps(_format_app(data), indent=2, default=str)
+        return json.dumps(_format_app(data), default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:

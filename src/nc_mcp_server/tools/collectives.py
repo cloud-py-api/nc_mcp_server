@@ -54,7 +54,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives")
         collectives = [_format_collective(c) for c in data["collectives"]]
-        return json.dumps(collectives, indent=2, default=str)
+        return json.dumps(collectives, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -73,7 +73,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives/{collective_id}/pages")
         pages = [_format_page(p) for p in data["pages"]]
-        return json.dumps(pages, indent=2, default=str)
+        return json.dumps(pages, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -92,7 +92,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives/{collective_id}/pages/{page_id}")
         page = data["page"]
-        return json.dumps(_format_page(page), indent=2, default=str)
+        return json.dumps(_format_page(page), default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -119,7 +119,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             post_data["emoji"] = emoji
         data = await client.ocs_post_json(f"{API}/collectives", json_data=post_data)
         collective = data["collective"]
-        return json.dumps(_format_collective(collective), indent=2, default=str)
+        return json.dumps(_format_collective(collective), default=str)
 
     @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
@@ -147,7 +147,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             json_data={"title": title},
         )
         page = data["page"]
-        return json.dumps(_format_page(page), indent=2, default=str)
+        return json.dumps(_format_page(page), default=str)
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:
@@ -184,7 +184,7 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_patch(f"{API}/collectives/trash/{collective_id}")
         collective = data["collective"]
-        return json.dumps(_format_collective(collective), indent=2, default=str)
+        return json.dumps(_format_collective(collective), default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
@@ -239,7 +239,7 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_patch(f"{API}/collectives/{collective_id}/pages/trash/{page_id}")
         page = data["page"]
-        return json.dumps(_format_page(page), indent=2, default=str)
+        return json.dumps(_format_page(page), default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)

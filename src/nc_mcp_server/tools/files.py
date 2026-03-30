@@ -76,7 +76,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         # First entry is the directory itself — skip it
         if entries and entries[0]["path"].rstrip("/") == path.strip("/"):
             entries = entries[1:]
-        return json.dumps(entries, indent=2, default=str)
+        return json.dumps(entries, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -158,7 +158,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
                 "has_more": len(results) == limit,
             },
         }
-        return json.dumps(response_data, indent=2, default=str)
+        return json.dumps(response_data, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:

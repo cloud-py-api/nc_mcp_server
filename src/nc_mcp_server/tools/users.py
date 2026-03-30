@@ -20,7 +20,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get("cloud/user")
-        return json.dumps(data, indent=2, default=str)
+        return json.dumps(data, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -38,7 +38,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         params = {"search": search, "limit": str(limit), "offset": str(offset)}
         data = await client.ocs_get("cloud/users", params=params)
-        return json.dumps(data, indent=2, default=str)
+        return json.dumps(data, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -53,7 +53,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"cloud/users/{user_id}")
-        return json.dumps(data, indent=2, default=str)
+        return json.dumps(data, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -78,7 +78,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         if email:
             data["email"] = email
         result = await client.ocs_post("cloud/users", data=data)
-        return json.dumps(result, indent=2, default=str)
+        return json.dumps(result, default=str)
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:

@@ -50,7 +50,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
                 data = {"userId": user, "status": "offline", "message": None, "icon": None, "clearAt": None}
             else:
                 raise
-        return json.dumps(_format_status(data), indent=2, default=str)
+        return json.dumps(_format_status(data), default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -101,7 +101,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
                 "apps/user_status/api/v1/user_status/message/custom",
                 data=msg_data,
             )
-        return json.dumps(_format_status(result), indent=2, default=str)
+        return json.dumps(_format_status(result), default=str)
 
     @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)

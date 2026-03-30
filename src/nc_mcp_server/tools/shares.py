@@ -70,7 +70,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             params["subfiles"] = "true"
         data = await client.ocs_get(SHARES_API, params=params)
         shares = [_format_share(s) for s in data]
-        return json.dumps(shares, indent=2, default=str)
+        return json.dumps(shares, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -87,7 +87,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"{SHARES_API}/{share_id}")
         share = _format_share(data[0])
-        return json.dumps(share, indent=2, default=str)
+        return json.dumps(share, default=str)
 
 
 _SUPPORTED_SHARE_TYPES = {0, 1, 3, 4, 6, 10}
@@ -163,7 +163,7 @@ def _register_create_share(mcp: FastMCP) -> None:
         if public_upload:
             data["publicUpload"] = "true"
         result = await client.ocs_post(SHARES_API, data=data)
-        return json.dumps(_format_share(result), indent=2, default=str)
+        return json.dumps(_format_share(result), default=str)
 
 
 def _register_update_share(mcp: FastMCP) -> None:
@@ -213,7 +213,7 @@ def _register_update_share(mcp: FastMCP) -> None:
         if hide_download is not None:
             data["hideDownload"] = "true" if hide_download else "false"
         result = await client.ocs_put(f"{SHARES_API}/{share_id}", data=data)
-        return json.dumps(_format_share(result), indent=2, default=str)
+        return json.dumps(_format_share(result), default=str)
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:

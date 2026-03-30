@@ -148,7 +148,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             params["noStatusUpdate"] = "0"
         data = await client.ocs_get("apps/spreed/api/v4/room", params=params)
         conversations = [_format_conversation(room) for room in data]
-        return json.dumps(conversations, indent=2, default=str)
+        return json.dumps(conversations, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -164,7 +164,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"apps/spreed/api/v4/room/{token}")
-        return json.dumps(_format_conversation(data), indent=2, default=str)
+        return json.dumps(_format_conversation(data), default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -235,7 +235,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         data = await client.ocs_get(f"apps/spreed/api/v4/room/{token}/participants")
         participants = [_format_participant(p) for p in data]
-        return json.dumps(participants, indent=2, default=str)
+        return json.dumps(participants, default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -259,7 +259,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_get(f"apps/spreed/api/v1/poll/{token}/{poll_id}")
-        return json.dumps(_format_poll(data), indent=2, default=str)
+        return json.dumps(_format_poll(data), default=str)
 
 
 def _register_poll_tools(mcp: FastMCP) -> None:
@@ -303,7 +303,7 @@ def _register_poll_tools(mcp: FastMCP) -> None:
             "maxVotes": max_votes,
         }
         data = await client.ocs_post(f"apps/spreed/api/v1/poll/{token}", data=post_data)
-        return json.dumps(_format_poll(data), indent=2, default=str)
+        return json.dumps(_format_poll(data), default=str)
 
     @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
@@ -331,7 +331,7 @@ def _register_poll_tools(mcp: FastMCP) -> None:
         client = get_client()
         post_data: dict[str, Any] = {"optionIds[]": option_ids}
         data = await client.ocs_post(f"apps/spreed/api/v1/poll/{token}/{poll_id}", data=post_data)
-        return json.dumps(_format_poll(data), indent=2, default=str)
+        return json.dumps(_format_poll(data), default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
@@ -353,7 +353,7 @@ def _register_poll_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         data = await client.ocs_delete(f"apps/spreed/api/v1/poll/{token}/{poll_id}")
-        return json.dumps(_format_poll(data), indent=2, default=str)
+        return json.dumps(_format_poll(data), default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -380,7 +380,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         if reply_to:
             post_data["replyTo"] = reply_to
         data = await client.ocs_post(f"apps/spreed/api/v1/chat/{token}", data=post_data)
-        return json.dumps(_format_message_full(data), indent=2, default=str)
+        return json.dumps(_format_message_full(data), default=str)
 
     @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
@@ -409,7 +409,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         if invite:
             post_data["invite"] = invite
         data = await client.ocs_post("apps/spreed/api/v4/room", data=post_data)
-        return json.dumps(_format_conversation(data), indent=2, default=str)
+        return json.dumps(_format_conversation(data), default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)

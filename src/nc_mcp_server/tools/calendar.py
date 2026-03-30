@@ -358,7 +358,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             context="List calendars",
         )
         calendars = _parse_calendars_xml(response.text or "", user)
-        return json.dumps(calendars, indent=2)
+        return json.dumps(calendars)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -410,7 +410,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             event = _format_event(ical_data)
             event["etag"] = etag
             events.append(event)
-        return json.dumps(events, indent=2)
+        return json.dumps(events)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -428,7 +428,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
         _href, etag, ical_data = await _find_event(calendar_id, event_uid)
         event = _format_event(ical_data)
         event["etag"] = etag
-        return json.dumps(event, indent=2)
+        return json.dumps(event)
 
 
 def _register_create_event(mcp: FastMCP) -> None:
@@ -490,7 +490,7 @@ def _register_create_event(mcp: FastMCP) -> None:
             headers={"Content-Type": "text/calendar; charset=utf-8"},
             context=f"Create event in '{calendar_id}'",
         )
-        return json.dumps({"uid": uid, "summary": summary}, indent=2)
+        return json.dumps({"uid": uid, "summary": summary})
 
 
 def _register_update_event(mcp: FastMCP) -> None:

@@ -134,7 +134,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
                 "has_more": len(comments) == limit,
             },
         }
-        return json.dumps(response_data, indent=2, default=str)
+        return json.dumps(response_data, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
@@ -168,7 +168,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
         )
         location = str(response.headers.get("Content-Location", ""))
         comment_id = location.rstrip("/").split("/")[-1] if location else "unknown"
-        return json.dumps({"id": comment_id, "message": message}, indent=2)
+        return json.dumps({"id": comment_id, "message": message})
 
     @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
@@ -204,7 +204,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             headers={"Content-Type": "application/xml; charset=utf-8"},
             context=f"Edit comment {comment_id} on file {file_id}",
         )
-        return json.dumps({"id": comment_id, "message": message}, indent=2)
+        return json.dumps({"id": comment_id, "message": message})
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:
