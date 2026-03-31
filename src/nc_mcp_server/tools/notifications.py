@@ -34,16 +34,16 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
-    async def list_notifications(limit: int = 50, offset: int = 0) -> str:
+    async def list_notifications(limit: int = 25, offset: int = 0) -> str:
         """List notifications for the current Nextcloud user.
 
         Returns notifications sorted by newest first. Note: the Nextcloud
-        server returns at most ~25 notifications per request and does not
-        support server-side pagination, so the effective total is capped
-        by the server regardless of the limit value.
+        server returns at most 25 notifications and does not support
+        server-side pagination, so the total available is capped by the
+        server regardless of the limit value.
 
         Args:
-            limit: Maximum number of notifications to return (1-200, default 50).
+            limit: Maximum number of notifications to return (1-25, default 25).
             offset: Number of notifications to skip for pagination (default 0).
 
         Returns:
@@ -51,7 +51,7 @@ def register(mcp: FastMCP) -> None:
             user, datetime, subject, message, and optionally link and actions) and
             "pagination" (count, offset, limit, has_more).
         """
-        limit = max(1, min(200, limit))
+        limit = max(1, min(25, limit))
         offset = max(0, offset)
         client = get_client()
         data = await client.ocs_get("apps/notifications/api/v2/notifications")
