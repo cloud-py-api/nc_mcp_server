@@ -2,6 +2,7 @@
 
 import contextlib
 import json
+from typing import Any
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
@@ -25,17 +26,18 @@ async def _cleanup_test_contacts(nc_mcp: McpTestHelper) -> None:
                 await nc_mcp.call("delete_contact", uid=uid, book_id=BOOK_ID)
 
 
-async def _create(nc_mcp: McpTestHelper, suffix: str, **extra: str) -> dict:
+async def _create(nc_mcp: McpTestHelper, suffix: str, **extra: str) -> dict[str, Any]:
     """Create a test contact and return the parsed result."""
     kw: dict[str, str] = {"full_name": f"{PREFIX}-{suffix}", "book_id": BOOK_ID, **extra}
-    return json.loads(await nc_mcp.call("create_contact", **kw))
+    result: dict[str, Any] = json.loads(await nc_mcp.call("create_contact", **kw))
+    return result
 
 
 class TestListAddressbooks:
     @pytest.mark.asyncio
     async def test_returns_list(self, nc_mcp: McpTestHelper) -> None:
         result = await nc_mcp.call("list_addressbooks")
-        books = json.loads(result)
+        books: list[dict[str, Any]] = json.loads(result)
         assert isinstance(books, list)
         assert len(books) >= 1
 
