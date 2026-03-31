@@ -237,21 +237,33 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
-    async def get_participants(token: str) -> str:
+    async def get_participants(token: str, limit: int = 50, offset: int = 0) -> str:
         """List participants in a Talk conversation.
 
         Args:
             token: The conversation token. Use list_conversations to find tokens.
+            limit: Maximum number of participants to return (1-200, default 50).
+            offset: Number of participants to skip for pagination (default 0).
 
         Returns:
-            JSON list of participant objects, each with: attendee_id,
-            actor_id, display_name, participant_type (owner/moderator/user/guest),
-            in_call status.
+            JSON with "data" (list of participant objects with attendee_id,
+            actor_id, display_name, participant_type, in_call) and
+            "pagination" (count, offset, limit, has_more).
         """
+        limit = max(1, min(200, limit))
+        offset = max(0, offset)
         client = get_client()
         data = await client.ocs_get(f"apps/spreed/api/v4/room/{token}/participants")
-        participants = [_format_participant(p) for p in data]
-        return json.dumps(participants, default=str)
+        all_participants = [_format_participant(p) for p in data]
+        page = all_participants[offset : offset + limit]
+        has_more = offset + limit < len(all_participants)
+        return json.dumps(
+            {
+                "data": page,
+                "pagination": {"count": len(page), "offset": offset, "limit": limit, "has_more": has_more},
+            },
+            default=str,
+        )
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)

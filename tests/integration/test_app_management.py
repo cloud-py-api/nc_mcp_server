@@ -15,28 +15,28 @@ SAFE_APP = "weather_status"
 class TestListApps:
     @pytest.mark.asyncio
     async def test_list_enabled_returns_list(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_apps")
-        apps: list[str] = json.loads(result)
+        result = await nc_mcp.call("list_apps", limit=500)
+        apps: list[str] = json.loads(result)["data"]
         assert isinstance(apps, list)
         assert len(apps) > 0
 
     @pytest.mark.asyncio
     async def test_list_enabled_contains_core_apps(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_apps", app_filter="enabled")
-        apps = json.loads(result)
+        result = await nc_mcp.call("list_apps", app_filter="enabled", limit=500)
+        apps = json.loads(result)["data"]
         assert "files" in apps
         assert "dav" in apps
 
     @pytest.mark.asyncio
     async def test_list_all(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_apps", app_filter="all")
-        apps = json.loads(result)
+        result = await nc_mcp.call("list_apps", app_filter="all", limit=500)
+        apps = json.loads(result)["data"]
         assert len(apps) > 0
 
     @pytest.mark.asyncio
     async def test_list_disabled(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_apps", app_filter="disabled")
-        apps = json.loads(result)
+        result = await nc_mcp.call("list_apps", app_filter="disabled", limit=500)
+        apps = json.loads(result)["data"]
         assert isinstance(apps, list)
 
     @pytest.mark.asyncio
@@ -73,10 +73,10 @@ class TestEnableDisableApp:
     async def test_disable_and_enable(self, nc_mcp: McpTestHelper) -> None:
         await nc_mcp.call("disable_app", app_id=SAFE_APP)
         try:
-            disabled = json.loads(await nc_mcp.call("list_apps", app_filter="disabled"))
+            disabled = json.loads(await nc_mcp.call("list_apps", app_filter="disabled", limit=500))["data"]
             assert SAFE_APP in disabled
             await nc_mcp.call("enable_app", app_id=SAFE_APP)
-            enabled = json.loads(await nc_mcp.call("list_apps", app_filter="enabled"))
+            enabled = json.loads(await nc_mcp.call("list_apps", app_filter="enabled", limit=500))["data"]
             assert SAFE_APP in enabled
         finally:
             await nc_mcp.call("enable_app", app_id=SAFE_APP)
@@ -98,8 +98,8 @@ class TestEnableDisableApp:
 class TestAppManagementPermissions:
     @pytest.mark.asyncio
     async def test_read_only_allows_list(self, nc_mcp_read_only: McpTestHelper) -> None:
-        result = await nc_mcp_read_only.call("list_apps")
-        assert isinstance(json.loads(result), list)
+        result = await nc_mcp_read_only.call("list_apps", limit=500)
+        assert isinstance(json.loads(result)["data"], list)
 
     @pytest.mark.asyncio
     async def test_read_only_blocks_enable(self, nc_mcp_read_only: McpTestHelper) -> None:

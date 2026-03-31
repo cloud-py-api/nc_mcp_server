@@ -29,16 +29,16 @@ async def _get_test_file_id(nc_mcp: McpTestHelper) -> int:
 class TestListTags:
     @pytest.mark.asyncio
     async def test_returns_list(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_tags")
-        data = json.loads(result)
+        result = await nc_mcp.call("list_tags", limit=200)
+        data = json.loads(result)["data"]
         assert isinstance(data, list)
 
     @pytest.mark.asyncio
     async def test_created_tag_appears_in_list(self, nc_mcp: McpTestHelper) -> None:
         tag_id = await _create_tag(nc_mcp, "mcp-test-visible")
         try:
-            result = await nc_mcp.call("list_tags")
-            tags = json.loads(result)
+            result = await nc_mcp.call("list_tags", limit=200)
+            tags = json.loads(result)["data"]
             ids = [t["id"] for t in tags]
             assert tag_id in ids
             tag = next(t for t in tags if t["id"] == tag_id)
@@ -53,8 +53,8 @@ class TestListTags:
     async def test_tag_has_required_fields(self, nc_mcp: McpTestHelper) -> None:
         tag_id = await _create_tag(nc_mcp, "mcp-test-fields")
         try:
-            result = await nc_mcp.call("list_tags")
-            tags = json.loads(result)
+            result = await nc_mcp.call("list_tags", limit=200)
+            tags = json.loads(result)["data"]
             tag = next(t for t in tags if t["id"] == tag_id)
             for field in ["id", "name", "user_visible", "user_assignable"]:
                 assert field in tag, f"Missing field: {field}"
@@ -100,7 +100,7 @@ class TestCreateTag:
         result = await nc_mcp.call("create_tag", name="mcp-test-noa", user_assignable=False)
         tag_id = int(json.loads(result)["id"])
         try:
-            tags = json.loads(await nc_mcp.call("list_tags"))
+            tags = json.loads(await nc_mcp.call("list_tags", limit=200))["data"]
             tag = next(t for t in tags if t["id"] == tag_id)
             assert tag["user_assignable"] is False
         finally:
@@ -218,7 +218,7 @@ class TestDeleteTag:
         tag_id = await _create_tag(nc_mcp, "mcp-test-delete")
         result = await nc_mcp.call("delete_tag", tag_id=tag_id)
         assert "deleted" in result.lower()
-        tags = json.loads(await nc_mcp.call("list_tags"))
+        tags = json.loads(await nc_mcp.call("list_tags", limit=200))["data"]
         assert not any(t["id"] == tag_id for t in tags)
 
     @pytest.mark.asyncio
@@ -239,8 +239,8 @@ class TestDeleteTag:
 class TestSystemTagPermissions:
     @pytest.mark.asyncio
     async def test_read_only_allows_list(self, nc_mcp_read_only: McpTestHelper) -> None:
-        result = await nc_mcp_read_only.call("list_tags")
-        assert isinstance(json.loads(result), list)
+        result = await nc_mcp_read_only.call("list_tags", limit=200)
+        assert isinstance(json.loads(result)["data"], list)
 
     @pytest.mark.asyncio
     async def test_read_only_blocks_create(self, nc_mcp_read_only: McpTestHelper) -> None:

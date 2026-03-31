@@ -268,8 +268,8 @@ class TestGetParticipants:
     async def test_returns_participants_list(self, nc_mcp: McpTestHelper) -> None:
         room = await _create_room(nc_mcp, "test-participants")
         try:
-            result = await nc_mcp.call("get_participants", token=str(room["token"]))
-            data: list[Any] = json.loads(result)
+            result = await nc_mcp.call("get_participants", token=str(room["token"]), limit=200)
+            data: list[Any] = json.loads(result)["data"]
             assert isinstance(data, list)
             assert len(data) >= 1
         finally:
@@ -279,8 +279,8 @@ class TestGetParticipants:
     async def test_creator_is_owner(self, nc_mcp: McpTestHelper) -> None:
         room = await _create_room(nc_mcp, "test-owner")
         try:
-            result = await nc_mcp.call("get_participants", token=str(room["token"]))
-            data = json.loads(result)
+            result = await nc_mcp.call("get_participants", token=str(room["token"]), limit=200)
+            data = json.loads(result)["data"]
             admin = next(p for p in data if p["actor_id"] == "admin")
             assert admin["participant_type"] == "owner"
         finally:
@@ -290,8 +290,8 @@ class TestGetParticipants:
     async def test_participant_has_required_fields(self, nc_mcp: McpTestHelper) -> None:
         room = await _create_room(nc_mcp, "test-part-fields")
         try:
-            result = await nc_mcp.call("get_participants", token=str(room["token"]))
-            data = json.loads(result)
+            result = await nc_mcp.call("get_participants", token=str(room["token"]), limit=200)
+            data = json.loads(result)["data"]
             p = data[0]
             required = ["attendee_id", "actor_type", "actor_id", "display_name", "participant_type", "in_call"]
             for field in required:
@@ -437,8 +437,8 @@ class TestCreateConversation:
         result = await nc_mcp.call("create_conversation", room_type=2, name="test-creator-part")
         data = json.loads(result)
         try:
-            participants = json.loads(await nc_mcp.call("get_participants", token=str(data["token"])))
-            actor_ids = [p["actor_id"] for p in participants]
+            raw = await nc_mcp.call("get_participants", token=str(data["token"]), limit=200)
+            actor_ids = [p["actor_id"] for p in json.loads(raw)["data"]]
             assert "admin" in actor_ids
         finally:
             await _delete_room(nc_mcp, str(data["token"]))

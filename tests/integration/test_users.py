@@ -45,41 +45,42 @@ class TestGetCurrentUser:
 class TestListUsers:
     @pytest.mark.asyncio
     async def test_returns_valid_json(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_users")
+        result = await nc_mcp.call("list_users", limit=200)
         data = json.loads(result)
         assert isinstance(data, dict)
+        assert "data" in data
+        assert "pagination" in data
 
     @pytest.mark.asyncio
     async def test_includes_admin(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_users")
-        data = json.loads(result)
-        assert "users" in data
-        assert "admin" in data["users"]
+        result = await nc_mcp.call("list_users", limit=200)
+        users = json.loads(result)["data"]
+        assert "admin" in users
 
     @pytest.mark.asyncio
     async def test_search_filter(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_users", search="admin")
-        data = json.loads(result)
-        assert "admin" in data["users"]
+        result = await nc_mcp.call("list_users", search="admin", limit=200)
+        users = json.loads(result)["data"]
+        assert "admin" in users
 
     @pytest.mark.asyncio
     async def test_search_no_match(self, nc_mcp: McpTestHelper) -> None:
-        result = await nc_mcp.call("list_users", search="nonexistent-user-xyz-12345")
-        data = json.loads(result)
-        assert data["users"] == []
+        result = await nc_mcp.call("list_users", search="nonexistent-user-xyz-12345", limit=200)
+        users = json.loads(result)["data"]
+        assert users == []
 
     @pytest.mark.asyncio
     async def test_limit_parameter(self, nc_mcp: McpTestHelper) -> None:
         result = await nc_mcp.call("list_users", limit=1)
         data = json.loads(result)
-        assert len(data["users"]) <= 1
+        assert len(data["data"]) <= 1
 
     @pytest.mark.asyncio
     async def test_default_parameters(self, nc_mcp: McpTestHelper) -> None:
-        # Should work with no arguments
         result = await nc_mcp.call("list_users")
         data = json.loads(result)
-        assert "users" in data
+        assert "data" in data
+        assert "pagination" in data
 
 
 class TestGetUser:

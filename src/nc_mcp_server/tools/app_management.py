@@ -25,27 +25,39 @@ def _format_app(a: dict[str, Any]) -> dict[str, Any]:
 def _register_read_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
-    async def list_apps(app_filter: str = "enabled") -> str:
+    async def list_apps(app_filter: str = "enabled", limit: int = 50, offset: int = 0) -> str:
         """List installed Nextcloud apps. Requires admin privileges.
-
-        Returns the list of app IDs matching the filter criteria.
 
         Args:
             app_filter: Filter apps by status. Options:
                         "enabled" (default) — only enabled apps
                         "disabled" — only disabled apps
                         "all" — all installed apps
+            limit: Maximum number of apps to return (1-500, default 50).
+            offset: Number of apps to skip for pagination (default 0).
 
         Returns:
-            JSON list of app ID strings.
+            JSON with "data" (list of app ID strings) and "pagination"
+            (count, offset, limit, has_more).
         """
         valid = {"enabled", "disabled", "all"}
         if app_filter not in valid:
             raise ValueError(f"Invalid filter '{app_filter}'. Must be one of: {', '.join(sorted(valid))}")
+        limit = max(1, min(500, limit))
+        offset = max(0, offset)
         client = get_client()
         params = {} if app_filter == "all" else {"filter": app_filter}
         data = await client.ocs_get(APPS_API, params=params)
-        return json.dumps(data["apps"])
+        all_apps = data["apps"]
+        page = all_apps[offset : offset + limit]
+        has_more = offset + limit < len(all_apps)
+        return json.dumps(
+            {
+                "data": page,
+                "pagination": {"count": len(page), "offset": offset, "limit": limit, "has_more": has_more},
+            },
+            default=str,
+        )
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)

@@ -59,16 +59,22 @@ def _parse_tags_xml(xml_text: str) -> list[dict[str, Any]]:
 def _register_read_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
-    async def list_tags() -> str:
-        """List all system tags available in this Nextcloud instance.
+    async def list_tags(limit: int = 50, offset: int = 0) -> str:
+        """List system tags available in this Nextcloud instance.
 
         System tags are shared labels that can be assigned to files for
-        organization and filtering. Tags have visibility and assignability
-        settings controlled by admins.
+        organization and filtering.
+
+        Args:
+            limit: Maximum number of tags to return (1-500, default 50).
+            offset: Number of tags to skip for pagination (default 0).
 
         Returns:
-            JSON list of tags, each with: id, name, user_visible, user_assignable.
+            JSON with "data" (list of tags with id, name, user_visible,
+            user_assignable) and "pagination" (count, offset, limit, has_more).
         """
+        limit = max(1, min(500, limit))
+        offset = max(0, offset)
         client = get_client()
         response = await client.dav_request(
             "PROPFIND",
@@ -77,8 +83,16 @@ def _register_read_tools(mcp: FastMCP) -> None:
             headers={"Content-Type": "application/xml; charset=utf-8"},
             context="List system tags",
         )
-        tags = _parse_tags_xml(response.text or "")
-        return json.dumps(tags)
+        all_tags = _parse_tags_xml(response.text or "")
+        page = all_tags[offset : offset + limit]
+        has_more = offset + limit < len(all_tags)
+        return json.dumps(
+            {
+                "data": page,
+                "pagination": {"count": len(page), "offset": offset, "limit": limit, "has_more": has_more},
+            },
+            default=str,
+        )
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)

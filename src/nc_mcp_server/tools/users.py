@@ -25,20 +25,32 @@ def _register_read_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_users(search: str = "", limit: int = 25, offset: int = 0) -> str:
-        """List Nextcloud users.
+        """List Nextcloud users. Uses server-side pagination.
 
         Args:
             search: Optional search string to filter users by name/email.
-            limit: Maximum number of users to return (default 25).
-            offset: Offset for pagination.
+            limit: Maximum number of users to return (1-200, default 25).
+            offset: Number of users to skip for pagination (default 0).
 
         Returns:
-            JSON list of user IDs matching the search.
+            JSON with "data" (list of user ID strings) and "pagination"
+            (count, offset, limit, has_more).
         """
+        limit = max(1, min(200, limit))
+        offset = max(0, offset)
         client = get_client()
         params = {"search": search, "limit": str(limit), "offset": str(offset)}
         data = await client.ocs_get("cloud/users", params=params)
-        return json.dumps(data, default=str)
+        raw = data["users"] if isinstance(data, dict) and "users" in data else data
+        users: list[str] = list(raw) if not isinstance(raw, list) else raw
+        has_more = len(users) == limit
+        return json.dumps(
+            {
+                "data": users,
+                "pagination": {"count": len(users), "offset": offset, "limit": limit, "has_more": has_more},
+            },
+            default=str,
+        )
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)

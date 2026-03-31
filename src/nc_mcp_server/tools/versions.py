@@ -60,24 +60,36 @@ def _parse_versions_xml(xml_text: str, user: str, file_id: int) -> list[dict[str
 def _register_read_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
-    async def list_versions(file_id: int) -> str:
-        """List all versions of a file by its file ID.
+    async def list_versions(file_id: int, limit: int = 50, offset: int = 0) -> str:
+        """List versions of a file by its file ID.
 
-        Returns the version history including the current version.
-        Use the file_id from list_directory or search_files results.
+        Returns the version history. Use the file_id from list_directory
+        or search_files results.
 
         Args:
             file_id: The numeric Nextcloud file ID.
+            limit: Maximum number of versions to return (1-200, default 50).
+            offset: Number of versions to skip for pagination (default 0).
 
         Returns:
-            JSON list of versions, each with: version_id (unix timestamp),
-            last_modified, size, content_type, author, and optionally label.
-            Use version_id with restore_version to revert the file.
+            JSON with "data" (list of versions with version_id, last_modified,
+            size, content_type, author, label) and "pagination"
+            (count, offset, limit, has_more).
         """
+        limit = max(1, min(200, limit))
+        offset = max(0, offset)
         client = get_client()
         xml_text = await client.versions_propfind(file_id)
-        entries = _parse_versions_xml(xml_text, get_config().user, file_id)
-        return json.dumps(entries, default=str)
+        all_versions = _parse_versions_xml(xml_text, get_config().user, file_id)
+        page = all_versions[offset : offset + limit]
+        has_more = offset + limit < len(all_versions)
+        return json.dumps(
+            {
+                "data": page,
+                "pagination": {"count": len(page), "offset": offset, "limit": limit, "has_more": has_more},
+            },
+            default=str,
+        )
 
 
 def _register_write_tools(mcp: FastMCP) -> None:
