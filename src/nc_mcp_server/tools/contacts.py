@@ -47,6 +47,36 @@ def _vcard_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
+def _normalize_entries(entries: list[dict[str, str]], default_type: str) -> list[dict[str, str]]:
+    """Normalize typed entries, ensuring each has 'value' and a default 'type'."""
+    result: list[dict[str, str]] = []
+    for entry in entries:
+        if "value" not in entry:
+            raise ValueError(f'Invalid entry: {entry}. Must contain "value" key.')
+        result.append({"value": str(entry["value"]), "type": str(entry.get("type", default_type))})
+    return result
+
+
+def _resolve_entries(
+    single: str | None,
+    multi: list[dict[str, str]] | None,
+    default_type: str,
+    param_single: str,
+    param_multi: str,
+) -> list[dict[str, str]] | None:
+    """Resolve single-value and multi-value params into a typed entry list.
+
+    Returns None if neither param was provided, empty list to clear, or populated list.
+    """
+    if single is not None and multi is not None:
+        raise ValueError(f"Provide either '{param_single}' or '{param_multi}', not both.")
+    if multi is not None:
+        return _normalize_entries(multi, default_type)
+    if single is not None:
+        return [{"value": single, "type": default_type}] if single else []
+    return None
+
+
 def _carddav_path(user: str, book_id: str = "", resource: str = "") -> str:
     path = f"addressbooks/users/{user}/"
     if book_id:
@@ -222,10 +252,12 @@ def _build_vcard(fields: dict[str, Any]) -> str:
         given = parts[0] if parts else ""
         family = parts[1] if len(parts) > 1 else ""
         lines.append(f"N:{_vcard_escape(family)};{_vcard_escape(given)};;;")
-    if fields.get("email"):
-        lines.append(f"EMAIL;TYPE=WORK:{_vcard_escape(fields['email'])}")
-    if fields.get("phone"):
-        lines.append(f"TEL;TYPE=CELL:{_vcard_escape(fields['phone'])}")
+    for entry in fields.get("email_entries", []):
+        type_part = f";TYPE={entry['type']}" if entry.get("type") else ""
+        lines.append(f"EMAIL{type_part}:{_vcard_escape(entry['value'])}")
+    for entry in fields.get("phone_entries", []):
+        type_part = f";TYPE={entry['type']}" if entry.get("type") else ""
+        lines.append(f"TEL{type_part}:{_vcard_escape(entry['value'])}")
     if fields.get("organization"):
         lines.append(f"ORG:{_vcard_escape(fields['organization'])}")
     if fields.get("title"):
@@ -247,8 +279,8 @@ def _find_contact(results: list[tuple[str, str, str]], uid: str) -> tuple[str, s
 
 _UPDATE_FIELD_MAP = [
     ("full_name", "FN"),
-    ("email", "EMAIL"),
-    ("phone", "TEL"),
+    ("email_entries", "EMAIL"),
+    ("phone_entries", "TEL"),
     ("organization", "ORG"),
     ("title", "TITLE"),
     ("note", "NOTE"),
@@ -257,8 +289,6 @@ _UPDATE_FIELD_MAP = [
 ]
 
 _SIMPLE_UPDATE_FIELDS = [
-    ("email", "EMAIL;TYPE=WORK"),
-    ("phone", "TEL;TYPE=CELL"),
     ("organization", "ORG"),
     ("title", "TITLE"),
     ("note", "NOTE"),
@@ -315,6 +345,11 @@ def _apply_contact_updates(vcard_data: str, updates: dict[str, Any]) -> str:
     for key, vcard_field in _SIMPLE_UPDATE_FIELDS:
         if updates.get(key):
             new_lines.insert(insert_before, f"{vcard_field}:{_vcard_escape(updates[key])}")
+    for prop_name, entries_key in [("EMAIL", "email_entries"), ("TEL", "phone_entries")]:
+        if entries_key in updates:
+            for entry in updates[entries_key]:
+                type_part = f";TYPE={entry['type']}" if entry.get("type") else ""
+                new_lines.insert(insert_before, f"{prop_name}{type_part}:{_vcard_escape(entry['value'])}")
     return "\r\n".join(new_lines) + "\r\n"
 
 
@@ -425,6 +460,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
         family_name: str = "",
         email: str = "",
         phone: str = "",
+        emails: list[dict[str, str]] | None = None,
+        phones: list[dict[str, str]] | None = None,
         organization: str = "",
         title: str = "",
         note: str = "",
@@ -434,12 +471,19 @@ def _register_write_tools(mcp: FastMCP) -> None:
 
         Provide at least full_name, or given_name/family_name.
 
+        For a single email/phone, use the email/phone params.
+        For multiple, use emails/phones with an array of {"value","type"} objects:
+          emails=[{"value":"a@b.com","type":"WORK"},{"value":"a@home.com","type":"HOME"}]
+        Do not provide both email and emails (or phone and phones).
+
         Args:
             full_name: Full display name (e.g. "John Doe").
             given_name: First name (e.g. "John").
             family_name: Last name (e.g. "Doe").
-            email: Primary email address.
-            phone: Primary phone number.
+            email: Single email address (convenience, adds as TYPE=WORK).
+            phone: Single phone number (convenience, adds as TYPE=CELL).
+            emails: Array of {"value","type"} for multiple emails. Overrides email.
+            phones: Array of {"value","type"} for multiple phones. Overrides phone.
             organization: Company/organization name.
             title: Job title.
             note: Free-text note.
@@ -450,6 +494,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
         """
         if not full_name and not given_name and not family_name:
             raise ValueError("At least one of full_name, given_name, or family_name is required.")
+        email_entries = _resolve_entries(email or None, emails, "WORK", "email", "emails")
+        phone_entries = _resolve_entries(phone or None, phones, "CELL", "phone", "phones")
         uid = f"mcp-{uuid.uuid4()}"
         vcard = _build_vcard(
             {
@@ -457,8 +503,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
                 "full_name": full_name,
                 "given_name": given_name,
                 "family_name": family_name,
-                "email": email,
-                "phone": phone,
+                "email_entries": email_entries or [],
+                "phone_entries": phone_entries or [],
                 "organization": organization,
                 "title": title,
                 "note": note,
@@ -499,6 +545,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
         family_name: str | None = None,
         email: str | None = None,
         phone: str | None = None,
+        emails: list[dict[str, str]] | None = None,
+        phones: list[dict[str, str]] | None = None,
         organization: str | None = None,
         title: str | None = None,
         note: str | None = None,
@@ -506,7 +554,10 @@ def _register_write_tools(mcp: FastMCP) -> None:
     ) -> str:
         """Update an existing contact. Only provided fields are changed.
 
-        Pass an empty string to clear an optional field (e.g. note="").
+        Pass an empty string to clear a scalar field (e.g. note="").
+        For emails/phones, pass [] to remove all.
+        Do not provide both email and emails (or phone and phones).
+
         Requires the contact's current etag (from get_contacts or get_contact)
         to prevent conflicting updates.
 
@@ -516,8 +567,10 @@ def _register_write_tools(mcp: FastMCP) -> None:
             full_name: New full display name.
             given_name: New first name.
             family_name: New last name.
-            email: New primary email. Pass "" to remove.
-            phone: New primary phone. Pass "" to remove.
+            email: Set a single email (replaces all, TYPE=WORK). Pass "" to remove all.
+            phone: Set a single phone (replaces all, TYPE=CELL). Pass "" to remove all.
+            emails: Array of {"value","type"} to replace all emails. Pass [] to clear.
+            phones: Array of {"value","type"} to replace all phones. Pass [] to clear.
             organization: New organization. Pass "" to remove.
             title: New job title. Pass "" to remove.
             note: New note. Pass "" to remove.
@@ -526,20 +579,24 @@ def _register_write_tools(mcp: FastMCP) -> None:
         Returns:
             JSON with the updated contact object.
         """
-        updates = {
+        updates: dict[str, Any] = {
             key: val
             for key, val in [
                 ("full_name", full_name),
                 ("given_name", given_name),
                 ("family_name", family_name),
-                ("email", email),
-                ("phone", phone),
                 ("organization", organization),
                 ("title", title),
                 ("note", note),
             ]
             if val is not None
         }
+        email_entries = _resolve_entries(email, emails, "WORK", "email", "emails")
+        if email_entries is not None:
+            updates["email_entries"] = email_entries
+        phone_entries = _resolve_entries(phone, phones, "CELL", "phone", "phones")
+        if phone_entries is not None:
+            updates["phone_entries"] = phone_entries
         if not updates:
             raise ValueError("At least one field must be provided for update.")
         config = get_config()

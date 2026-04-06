@@ -379,6 +379,174 @@ async def _put_vcard_with_categories(nc_mcp: McpTestHelper, suffix: str, categor
     return uid
 
 
+class TestMultiValueEmailPhone:
+    @pytest.mark.asyncio
+    async def test_create_with_multiple_emails(self, nc_mcp: McpTestHelper) -> None:
+        emails = [{"value": "work@test.com", "type": "WORK"}, {"value": "home@test.com", "type": "HOME"}]
+        contact = json.loads(
+            await nc_mcp.call("create_contact", full_name=f"{PREFIX}-multi-email", emails=emails, book_id=BOOK_ID)
+        )
+        values = {e["value"] for e in contact.get("emails", [])}
+        assert values == {"work@test.com", "home@test.com"}
+
+    @pytest.mark.asyncio
+    async def test_create_with_multiple_phones(self, nc_mcp: McpTestHelper) -> None:
+        phones = [{"value": "+1111", "type": "CELL"}, {"value": "+2222", "type": "WORK"}]
+        contact = json.loads(
+            await nc_mcp.call("create_contact", full_name=f"{PREFIX}-multi-phone", phones=phones, book_id=BOOK_ID)
+        )
+        values = {p["value"] for p in contact.get("phones", [])}
+        assert values == {"+1111", "+2222"}
+
+    @pytest.mark.asyncio
+    async def test_create_preserves_email_types(self, nc_mcp: McpTestHelper) -> None:
+        emails = [{"value": "w@test.com", "type": "WORK"}, {"value": "h@test.com", "type": "HOME"}]
+        contact = json.loads(
+            await nc_mcp.call("create_contact", full_name=f"{PREFIX}-email-types", emails=emails, book_id=BOOK_ID)
+        )
+        type_map = {e["value"]: e.get("type", "") for e in contact.get("emails", [])}
+        assert type_map["w@test.com"] == "WORK"
+        assert type_map["h@test.com"] == "HOME"
+
+    @pytest.mark.asyncio
+    async def test_create_email_and_emails_conflict(self, nc_mcp: McpTestHelper) -> None:
+        with pytest.raises((ToolError, ValueError)):
+            await nc_mcp.call(
+                "create_contact",
+                full_name=f"{PREFIX}-conflict",
+                email="a@test.com",
+                emails=[{"value": "b@test.com", "type": "WORK"}],
+                book_id=BOOK_ID,
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_phone_and_phones_conflict(self, nc_mcp: McpTestHelper) -> None:
+        with pytest.raises((ToolError, ValueError)):
+            await nc_mcp.call(
+                "create_contact",
+                full_name=f"{PREFIX}-conflict2",
+                phone="+111",
+                phones=[{"value": "+222", "type": "CELL"}],
+                book_id=BOOK_ID,
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_with_multiple_emails(self, nc_mcp: McpTestHelper) -> None:
+        contact = await _create(nc_mcp, "upd-multi-email", email="old@test.com")
+        fetched = json.loads(await nc_mcp.call("get_contact", uid=contact["uid"], book_id=BOOK_ID))
+        new_emails = [
+            {"value": "work@new.com", "type": "WORK"},
+            {"value": "personal@new.com", "type": "HOME"},
+        ]
+        updated = json.loads(
+            await nc_mcp.call(
+                "update_contact", uid=contact["uid"], etag=fetched["etag"], emails=new_emails, book_id=BOOK_ID
+            )
+        )
+        values = {e["value"] for e in updated.get("emails", [])}
+        assert values == {"work@new.com", "personal@new.com"}
+        assert "old@test.com" not in values
+
+    @pytest.mark.asyncio
+    async def test_update_preserves_existing_emails_when_not_provided(self, nc_mcp: McpTestHelper) -> None:
+        """When neither email nor emails is provided, existing emails should be preserved."""
+        uid = "mcp-preserve-emails"
+        lines = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            f"UID:{uid}",
+            f"FN:{PREFIX}-preserve-emails",
+            f"N:;{PREFIX}-preserve-emails;;;",
+            "EMAIL;TYPE=WORK:keep@test.com",
+            "EMAIL;TYPE=HOME:also-keep@test.com",
+            "END:VCARD",
+        ]
+        vcard = "\r\n".join(lines) + "\r\n"
+        config = get_config()
+        await nc_mcp.client.dav_request(
+            "PUT",
+            f"addressbooks/users/{config.user}/{BOOK_ID}/{uid}.vcf",
+            body=vcard,
+            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            context=f"Create test contact '{uid}'",
+        )
+        contact = json.loads(await nc_mcp.call("get_contact", uid=uid, book_id=BOOK_ID))
+        updated = json.loads(
+            await nc_mcp.call("update_contact", uid=uid, etag=contact["etag"], title="New Title", book_id=BOOK_ID)
+        )
+        values = {e["value"] for e in updated.get("emails", [])}
+        assert values == {"keep@test.com", "also-keep@test.com"}
+        assert updated.get("title") == "New Title"
+
+    @pytest.mark.asyncio
+    async def test_update_clear_all_emails(self, nc_mcp: McpTestHelper) -> None:
+        contact = await _create(nc_mcp, "upd-clear-emails", email="remove@test.com")
+        fetched = json.loads(await nc_mcp.call("get_contact", uid=contact["uid"], book_id=BOOK_ID))
+        assert fetched.get("emails")
+        updated = json.loads(
+            await nc_mcp.call("update_contact", uid=contact["uid"], etag=fetched["etag"], emails=[], book_id=BOOK_ID)
+        )
+        assert not updated.get("emails")
+
+    @pytest.mark.asyncio
+    async def test_update_clear_all_emails_via_empty_email(self, nc_mcp: McpTestHelper) -> None:
+        contact = await _create(nc_mcp, "upd-clear-email-str", email="remove@test.com")
+        fetched = json.loads(await nc_mcp.call("get_contact", uid=contact["uid"], book_id=BOOK_ID))
+        updated = json.loads(
+            await nc_mcp.call("update_contact", uid=contact["uid"], etag=fetched["etag"], email="", book_id=BOOK_ID)
+        )
+        assert not updated.get("emails")
+
+    @pytest.mark.asyncio
+    async def test_update_with_multiple_phones(self, nc_mcp: McpTestHelper) -> None:
+        contact = await _create(nc_mcp, "upd-multi-phone", phone="+0000")
+        fetched = json.loads(await nc_mcp.call("get_contact", uid=contact["uid"], book_id=BOOK_ID))
+        new_phones = [{"value": "+1111", "type": "CELL"}, {"value": "+2222", "type": "WORK"}]
+        updated = json.loads(
+            await nc_mcp.call(
+                "update_contact", uid=contact["uid"], etag=fetched["etag"], phones=new_phones, book_id=BOOK_ID
+            )
+        )
+        values = {p["value"] for p in updated.get("phones", [])}
+        assert values == {"+1111", "+2222"}
+
+    @pytest.mark.asyncio
+    async def test_update_email_and_emails_conflict(self, nc_mcp: McpTestHelper) -> None:
+        contact = await _create(nc_mcp, "upd-conflict")
+        fetched = json.loads(await nc_mcp.call("get_contact", uid=contact["uid"], book_id=BOOK_ID))
+        with pytest.raises((ToolError, ValueError)):
+            await nc_mcp.call(
+                "update_contact",
+                uid=contact["uid"],
+                etag=fetched["etag"],
+                email="a@test.com",
+                emails=[{"value": "b@test.com", "type": "WORK"}],
+                book_id=BOOK_ID,
+            )
+
+    @pytest.mark.asyncio
+    async def test_roundtrip_multi_email_read_modify_write(self, nc_mcp: McpTestHelper) -> None:
+        """Read a contact's emails, add one, write back — the full multi-value workflow."""
+        emails: list[dict[str, str]] = [{"value": "first@test.com", "type": "WORK"}]
+        contact = json.loads(
+            await nc_mcp.call("create_contact", full_name=f"{PREFIX}-roundtrip", emails=emails, book_id=BOOK_ID)
+        )
+        fetched = json.loads(await nc_mcp.call("get_contact", uid=contact["uid"], book_id=BOOK_ID))
+        current_emails = fetched.get("emails", [])
+        current_emails.append({"value": "second@test.com", "type": "HOME"})
+        updated = json.loads(
+            await nc_mcp.call(
+                "update_contact",
+                uid=contact["uid"],
+                etag=fetched["etag"],
+                emails=current_emails,
+                book_id=BOOK_ID,
+            )
+        )
+        values = {e["value"] for e in updated.get("emails", [])}
+        assert values == {"first@test.com", "second@test.com"}
+
+
 class TestContactCategories:
     @pytest.mark.asyncio
     async def test_single_category(self, nc_mcp: McpTestHelper) -> None:
