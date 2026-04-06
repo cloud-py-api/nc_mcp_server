@@ -392,6 +392,23 @@ class TestUpdateContact:
         assert updated["full_name"], "FN must not be empty"
         assert PREFIX in updated["full_name"] or updated["full_name"] == original_fn
 
+    @pytest.mark.asyncio
+    async def test_update_clear_both_names_keeps_fn(self, nc_mcp: McpTestHelper) -> None:
+        """Clearing both given_name and family_name must still produce a non-empty FN."""
+        uid = await _put_vcard_with_name(nc_mcp, "clr-both", given="John", family="Doe")
+        contact = json.loads(await nc_mcp.call("get_contact", uid=uid, book_id=BOOK_ID))
+        updated = json.loads(
+            await nc_mcp.call(
+                "update_contact",
+                uid=uid,
+                etag=contact["etag"],
+                given_name="",
+                family_name="",
+                book_id=BOOK_ID,
+            )
+        )
+        assert updated["full_name"], "FN must not be empty when both name parts are cleared"
+
 
 async def _put_vcard_with_categories(nc_mcp: McpTestHelper, suffix: str, categories: list[str]) -> str:
     """Create a test contact with CATEGORIES via direct CardDAV PUT. Returns UID."""
@@ -585,6 +602,40 @@ class TestMultiValueEmailPhone:
         )
         values = {e["value"] for e in updated.get("emails", [])}
         assert values == {"first@test.com", "second@test.com"}
+
+    @pytest.mark.asyncio
+    async def test_update_email_with_grouped_properties(self, nc_mcp: McpTestHelper) -> None:
+        """Updating emails must strip group-prefixed EMAIL lines (e.g. item1.EMAIL)."""
+        uid = "mcp-grouped-email"
+        full_name = f"{PREFIX}-grouped-email"
+        lines = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            f"UID:{uid}",
+            f"FN:{full_name}",
+            f"N:;{full_name};;;",
+            "item1.EMAIL;TYPE=WORK:grouped@test.com",
+            "item1.X-ABLabel:Work",
+            "END:VCARD",
+        ]
+        vcard = "\r\n".join(lines) + "\r\n"
+        config = get_config()
+        await nc_mcp.client.dav_request(
+            "PUT",
+            f"addressbooks/users/{config.user}/{BOOK_ID}/{uid}.vcf",
+            body=vcard,
+            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            context=f"Create test contact '{uid}'",
+        )
+        contact = json.loads(await nc_mcp.call("get_contact", uid=uid, book_id=BOOK_ID))
+        assert any(e["value"] == "grouped@test.com" for e in contact.get("emails", []))
+        new_emails = [{"value": "new@test.com", "type": "HOME"}]
+        updated = json.loads(
+            await nc_mcp.call("update_contact", uid=uid, etag=contact["etag"], emails=new_emails, book_id=BOOK_ID)
+        )
+        values = [e["value"] for e in updated.get("emails", [])]
+        assert "new@test.com" in values
+        assert "grouped@test.com" not in values, "Grouped EMAIL property was not stripped"
 
 
 class TestContactCategories:

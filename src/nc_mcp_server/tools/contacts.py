@@ -152,7 +152,8 @@ def _typed_values(card: Any, prop_name: str) -> list[dict[str, str]]:
     """Extract multi-value properties like EMAIL, TEL, ADR as typed dicts."""
     items: list[dict[str, str]] = []
     for name, val in card.property_items():
-        if name != prop_name:
+        bare_name = name.split(".", 1)[1] if "." in name else name
+        if bare_name != prop_name:
             continue
         params = dict(val.params) if hasattr(val, "params") else {}
         type_val = params.get("TYPE", "")
@@ -312,10 +313,15 @@ def _unfold_vcard_lines(vcard_data: str) -> list[str]:
 
 
 def _strip_updated_fields(lines: list[str], skip_fields: set[str]) -> list[str]:
-    """Remove lines whose vCard field name is in skip_fields."""
+    """Remove lines whose vCard field name is in skip_fields.
+
+    Handles group prefixes (e.g. 'item1.EMAIL;TYPE=WORK:...' → field 'EMAIL').
+    """
     result: list[str] = []
     for line in lines:
         field_name = line.split(";")[0].split(":")[0].upper() if ":" in line else ""
+        if "." in field_name:
+            field_name = field_name.split(".", 1)[1]
         if field_name not in skip_fields:
             result.append(line)
     return result
@@ -349,7 +355,10 @@ def _apply_name_updates(new_lines: list[str], insert_before: int, card: Any, upd
     n_parts = ";".join(_vcard_escape(p) for p in [family, given, additional, prefix, suffix])
     new_lines.insert(insert_before, f"N:{n_parts}")
     if not fn_inserted:
-        new_lines.insert(insert_before, f"FN:{_vcard_escape(f'{given} {family}'.strip())}")
+        derived_fn = f"{given} {family}".strip()
+        if not derived_fn:
+            derived_fn = _synthesize_fn(card)
+        new_lines.insert(insert_before, f"FN:{_vcard_escape(derived_fn)}")
         fn_inserted = True
     return fn_inserted
 
