@@ -12,10 +12,29 @@ pytestmark = pytest.mark.integration
 
 LIST_ID = "tasks"
 
+MKCALENDAR_BODY = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<cal:mkcalendar xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">'
+    "<d:set><d:prop>"
+    "<d:displayname>Tasks</d:displayname>"
+    "<cal:supported-calendar-component-set>"
+    '<cal:comp name="VTODO"/>'
+    "</cal:supported-calendar-component-set>"
+    "</d:prop></d:set>"
+    "</cal:mkcalendar>"
+)
+
 
 @pytest.fixture(autouse=True)
-async def _cleanup_test_tasks(nc_mcp: McpTestHelper) -> None:
-    """Delete any leftover test tasks before each test."""
+async def _ensure_task_list_and_cleanup(nc_mcp: McpTestHelper) -> None:
+    """Ensure the 'tasks' CalDAV list exists and clean up test tasks."""
+    with contextlib.suppress(Exception):
+        await nc_mcp.client.dav_request(
+            "MKCALENDAR",
+            f"calendars/{nc_mcp.client._config.user}/{LIST_ID}/",
+            body=MKCALENDAR_BODY,
+            headers={"Content-Type": "application/xml; charset=utf-8"},
+        )
     result = await nc_mcp.call("get_tasks", list_id=LIST_ID, limit=500)
     for task in json.loads(result)["data"]:
         uid = task["uid"]
