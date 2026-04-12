@@ -113,6 +113,7 @@ executionEnvironments = [
   { root = "tests/test_client_retry.py", reportAttributeAccessIssue = false, reportUnknownMemberType = false },
   { root = "src/nc_mcp_server/tools/calendar.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
   { root = "src/nc_mcp_server/tools/contacts.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
+  { root = "src/nc_mcp_server/tools/tasks.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
   { root = "src/nc_mcp_server/tools/users.py", reportUnknownVariableType = false, reportUnknownArgumentType = false },
 ]
 
