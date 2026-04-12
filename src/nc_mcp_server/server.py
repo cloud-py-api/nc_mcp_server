@@ -17,6 +17,7 @@ from .tools import (
     files,
     mail,
     notifications,
+    search,
     shares,
     system_tags,
     talk,
@@ -63,6 +64,7 @@ def create_server(config: Config | None = None) -> FastMCP:
     files.register(mcp)
     mail.register(mcp)
     notifications.register(mcp)
+    search.register(mcp)
     shares.register(mcp)
     system_tags.register(mcp)
     talk.register(mcp)

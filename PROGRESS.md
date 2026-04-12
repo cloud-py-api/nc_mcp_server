@@ -36,6 +36,7 @@
 - [x] Calendar tools: list_calendars, get_events, get_event, create_event, update_event, delete_event (2026-03-30)
 - [x] Contacts tools: list_addressbooks, get_contacts, get_contact, create_contact, update_contact, delete_contact (2026-03-31)
 - [x] Tasks tools: list_task_lists, get_tasks, get_task, create_task, update_task, complete_task, delete_task (2026-04-08)
+- [x] Unified Search tools: list_search_providers, unified_search (2026-04-12)
 
 ### In Progress
 
@@ -53,7 +54,7 @@
 | 2 | Communication (Talk, Announcements, Mail) | Complete |
 | 3 | Groupware (Calendar, Contacts, Tasks, Deck, Notes) | In Progress |
 | 4 | Collaboration (Collectives, Forms, Polls, Tables) | Not Started |
-| 5 | Storage & Search | Not Started |
+| 5 | Storage & Search | In Progress |
 | 6 | Media & Data | Not Started |
 | 7 | Advanced & Admin (App Management, etc.) | In Progress |
 
@@ -80,6 +81,7 @@
 | Calendar | 6 | 44 |
 | Contacts | 6 | 36 |
 | Tasks | 7 | 48 |
+| Search | 2 | 17 |
 | User Permissions | — | 15 |
 | Server | — | 7 |
 | Permissions | — | 34 |
@@ -87,4 +89,4 @@
 | Client | — | 29 |
 | Config | — | 17 |
 | State | — | 2 |
-| **Total** | **95** | **670** |
+| **Total** | **97** | **687** |
