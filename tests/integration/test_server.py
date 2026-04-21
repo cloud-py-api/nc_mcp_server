@@ -105,6 +105,7 @@ EXPECTED_TOOLS = [
     "update_share",
     "update_task",
     "upload_file",
+    "upload_file_binary",
     "vote_poll",
 ]
 
