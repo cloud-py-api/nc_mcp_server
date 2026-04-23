@@ -18,6 +18,11 @@ def _validate_due_date(due_date: str) -> None:
     before PUT. If the PUT then fails server-side validation, the original
     reminder is already gone. Pre-validating here keeps failed calls from
     destroying an existing reminder.
+
+    Known narrow edge case: if the local clock is behind Nextcloud's and
+    due_date falls inside the drift window, our check passes but NC's
+    rejects — DELETE happens, PUT 400s, and an existing reminder is lost.
+    Accepted: real reminders are minutes-to-days ahead, not seconds.
     """
     try:
         parsed = datetime.fromisoformat(due_date)
@@ -27,7 +32,7 @@ def _validate_due_date(due_date: str) -> None:
             "timezone, e.g. '2026-05-01T10:00:00+00:00' or '2026-05-01T10:00:00Z'.",
             400,
         ) from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
+    if parsed.tzinfo is None:
         raise NextcloudError(
             f"Invalid due_date '{due_date}': timezone is required (e.g. '+00:00' or 'Z').",
             400,

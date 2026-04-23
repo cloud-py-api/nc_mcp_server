@@ -213,14 +213,6 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `list_versions` | read | List version history of a file |
 | `restore_version` | write | Restore a previous version of a file |
 
-### File Reminders
-
-| Tool | Permission | Description |
-|------|-----------|-------------|
-| `get_file_reminder` | read | Get the reminder set on a file (null if none) |
-| `set_file_reminder` | write | Set or replace a reminder due date (ISO 8601, must be in the future) |
-| `remove_file_reminder` | destructive | Remove the reminder from a file |
-
 ### File Comments
 
 | Tool | Permission | Description |
@@ -229,6 +221,14 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `add_comment` | write | Add a comment to a file |
 | `edit_comment` | write | Edit an existing comment |
 | `delete_comment` | destructive | Delete a comment |
+
+### File Reminders
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `get_file_reminder` | read | Get the reminder set on a file (null if none) |
+| `set_file_reminder` | write | Set or replace a reminder due date (ISO 8601, must be in the future) |
+| `remove_file_reminder` | destructive | Remove the reminder from a file |
 
 ### System Tags
 
