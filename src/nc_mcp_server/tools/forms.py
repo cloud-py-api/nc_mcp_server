@@ -25,13 +25,13 @@ QUESTION_TYPES = {
 GRID_SUBTYPES = {"radio", "checkbox", "number"}
 
 
-def _dedupe_forms_by_id(*batches: list[Any]) -> list[Any]:
+def _dedupe_forms_by_id(*batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Merge form lists by id, preserving order and dropping duplicates."""
     seen: set[int] = set()
-    merged: list[Any] = []
+    merged: list[dict[str, Any]] = []
     for batch in batches:
         for form in batch:
-            fid = form.get("id") if isinstance(form, dict) else None
+            fid: int | None = form.get("id")
             if fid is None or fid in seen:
                 continue
             seen.add(fid)

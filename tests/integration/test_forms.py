@@ -34,7 +34,7 @@ class TestListForms:
     @pytest.mark.asyncio
     async def test_list_without_type_returns_list(self, nc_mcp: McpTestHelper) -> None:
         form = await _make_form(nc_mcp, "mcp-test-list-all")
-        forms = json.loads(await nc_mcp.call("list_forms"))
+        forms: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_forms"))
         assert isinstance(forms, list)
         assert any(f["id"] == form["id"] for f in forms), "owned form should appear in default (merged) list"
 
@@ -42,7 +42,7 @@ class TestListForms:
     async def test_list_default_is_deduped(self, nc_mcp: McpTestHelper) -> None:
         """The default merged list fans out to both owned+shared; a form must appear once."""
         form = await _make_form(nc_mcp, "mcp-test-list-dedup")
-        forms = json.loads(await nc_mcp.call("list_forms"))
+        forms: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_forms"))
         matches = [f for f in forms if f["id"] == form["id"]]
         assert len(matches) == 1, "form id appeared more than once in merged list"
 
