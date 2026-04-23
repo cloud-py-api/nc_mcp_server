@@ -39,6 +39,7 @@
 - [x] Unified Search tools: list_search_providers, unified_search (2026-04-12)
 - [x] upload_file_binary tool: base64-encoded binary upload with MIME inference (2026-04-21)
 - [x] upload_file_from_path tool: stream a local file to Nextcloud. Off by default; enabled via NEXTCLOUD_MCP_UPLOAD_ROOT, restricted to files inside that root (symlinks resolved) (2026-04-21)
+- [x] File Reminders tools: get_file_reminder, set_file_reminder, remove_file_reminder (2026-04-22)
 
 ### In Progress
 
@@ -46,7 +47,7 @@
 (none)
 
 ### Next Up
-- Deck, Notes
+- Tables, Forms, Weather Status (all with full OCS coverage)
 
 ## Phases
 
@@ -56,7 +57,7 @@
 | 2 | Communication (Talk, Announcements, Mail) | Complete |
 | 3 | Groupware (Calendar, Contacts, Tasks, Deck, Notes) | In Progress |
 | 4 | Collaboration (Collectives, Forms, Polls, Tables) | Not Started |
-| 5 | Storage & Search | In Progress |
+| 5 | Storage & Search (Files Reminders, Unified Search done) | In Progress |
 | 6 | Media & Data | Not Started |
 | 7 | Advanced & Admin (App Management, etc.) | In Progress |
 
@@ -92,7 +93,8 @@
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 26 |
-| **Total** | **99** | **751** |
+| File Reminders | 3 | 20 |
+| **Total** | **102** | **771** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 98 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 101 tools.

@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 98 Tools Across 20 Nextcloud Apps
+## 101 Tools Across 21 Nextcloud Apps
 
-A 99th tool, `upload_file_from_path`, is registered only when the operator sets
+A 102nd tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -42,6 +42,7 @@ A 99th tool, `upload_file_from_path`, is registered only when the operator sets
 | [Trashbin](#trashbin) | list, restore, delete item, empty trash | WebDAV |
 | [File Versions](#file-versions) | list, restore versions | WebDAV |
 | [File Comments](#file-comments) | list, add, edit, delete comments | WebDAV |
+| [File Reminders](#file-reminders) | get, set, remove per-file reminders | OCS |
 | [System Tags](#system-tags) | list, create, assign, unassign, delete tags | WebDAV |
 | [Users](#users) | get current, list, get, create, delete users | OCS |
 | [User Status](#user-status) | get, set, clear status | OCS |
@@ -220,6 +221,14 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `add_comment` | write | Add a comment to a file |
 | `edit_comment` | write | Edit an existing comment |
 | `delete_comment` | destructive | Delete a comment |
+
+### File Reminders
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `get_file_reminder` | read | Get the reminder set on a file (null if none) |
+| `set_file_reminder` | write | Set or replace a reminder due date (ISO 8601, must be in the future) |
+| `remove_file_reminder` | destructive | Remove the reminder from a file |
 
 ### System Tags
 
