@@ -110,6 +110,17 @@ class TestListCircles:
         circles: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circles", limit=2))
         assert len(circles) == 2
 
+    @pytest.mark.asyncio
+    async def test_list_offset_skips_entries(self, nc_mcp: McpTestHelper) -> None:
+        """limit=1 + offset=1 skips the first entry — sanity-check pagination offset."""
+        for i in range(3):
+            await _make_circle(nc_mcp, f"mcp-test-circle-offset-{i}")
+        page_one: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circles", limit=1))
+        page_two: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circles", limit=1, offset=1))
+        assert len(page_one) == 1
+        assert len(page_two) == 1
+        assert page_one[0]["id"] != page_two[0]["id"]
+
 
 class TestCircleLifecycle:
     @pytest.mark.asyncio
@@ -241,6 +252,41 @@ class TestMembers:
         members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
         assert not any(m.get("userId") == circle_peer for m in members)
 
+    @pytest.mark.asyncio
+    async def test_full_details_adds_circle_field(self, nc_mcp: McpTestHelper) -> None:
+        """full_details=True returns the extra `circle` field on each member entry."""
+        circle = await _make_circle(nc_mcp, "mcp-test-circle-full-details")
+        default_members: list[dict[str, Any]] = json.loads(
+            await nc_mcp.call("list_circle_members", circle_id=circle["id"])
+        )
+        full_members: list[dict[str, Any]] = json.loads(
+            await nc_mcp.call("list_circle_members", circle_id=circle["id"], full_details=True)
+        )
+        assert default_members, "owner should be present in default response"
+        assert full_members, "owner should be present in full-details response"
+        assert "circle" not in default_members[0]
+        assert "circle" in full_members[0]
+
+    @pytest.mark.asyncio
+    async def test_promote_to_owner_transfers_and_demotes_caller(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
+        """Promoting a member to owner transfers ownership; previous owner becomes admin (level=8)."""
+        circle = await _make_circle(nc_mcp, "mcp-test-circle-xfer-owner")
+        added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
+        await nc_mcp.call(
+            "update_circle_member_level",
+            circle_id=circle["id"],
+            member_id=added["id"],
+            level="owner",
+        )
+        members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
+        peer_level = next(m["level"] for m in members if m.get("userId") == circle_peer)
+        caller_level = next(m["level"] for m in members if m.get("userId") == get_config().user)
+        assert peer_level == 9, "promoted member should be owner (9)"
+        assert caller_level == 8, "previous owner should be demoted to admin (8)"
+        # peer is now the only owner — admin cleanup can't destroy it. Tear down as peer.
+        async with _as_peer(circle_peer, CIRCLE_TEST_PWD):
+            await nc_mcp.call("delete_circle", circle_id=circle["id"])
+
 
 class TestJoinLeave:
     @pytest.mark.asyncio
@@ -257,6 +303,15 @@ class TestJoinLeave:
         assert any(m.get("userId") == circle_peer for m in members)
 
     @pytest.mark.asyncio
+    async def test_join_non_open_fails(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
+        """Joining a circle without the OPEN flag is rejected by the server."""
+        circle = await _make_circle(nc_mcp, "mcp-test-circle-closed-join")
+        # default config (no OPEN flag) — peer must not be able to join
+        async with _as_peer(circle_peer, CIRCLE_TEST_PWD):
+            with pytest.raises((ToolError, NextcloudError)):
+                await nc_mcp.call("join_circle", circle_id=circle["id"])
+
+    @pytest.mark.asyncio
     async def test_leave_as_member(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
         """Admin adds peer; peer calls leave_circle; peer is gone from member list."""
         circle = await _make_circle(nc_mcp, "mcp-test-circle-leave")
@@ -265,6 +320,14 @@ class TestJoinLeave:
             await nc_mcp.call("leave_circle", circle_id=circle["id"])
         members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
         assert not any(m.get("userId") == circle_peer for m in members)
+
+    @pytest.mark.asyncio
+    async def test_sole_owner_leave_destroys_circle(self, nc_mcp: McpTestHelper) -> None:
+        """Sole-owner leave silently destroys the circle — documented server behavior."""
+        circle = await _make_circle(nc_mcp, "mcp-test-circle-sole-leave")
+        await nc_mcp.call("leave_circle", circle_id=circle["id"])
+        with pytest.raises((ToolError, NextcloudError)):
+            await nc_mcp.call("get_circle", circle_id=circle["id"])
 
 
 class TestSearch:
@@ -296,6 +359,12 @@ class TestCirclesPermissions:
     async def test_write_blocks_delete(self, nc_mcp_write: McpTestHelper) -> None:
         with pytest.raises(ToolError, match=r"[Pp]ermission"):
             await nc_mcp_write.call("delete_circle", circle_id="doesnt-matter")
+
+    @pytest.mark.asyncio
+    async def test_write_blocks_leave(self, nc_mcp_write: McpTestHelper) -> None:
+        """leave_circle is DESTRUCTIVE because sole-owner leave destroys the circle."""
+        with pytest.raises(ToolError, match=r"[Pp]ermission"):
+            await nc_mcp_write.call("leave_circle", circle_id="doesnt-matter")
 
     @pytest.mark.asyncio
     async def test_write_allows_create_and_update(self, nc_mcp_write: McpTestHelper) -> None:

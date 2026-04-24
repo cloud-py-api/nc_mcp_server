@@ -101,9 +101,9 @@ def _register_read_tools(mcp: FastMCP) -> None:
             term: Search phrase. Matches against names/ids.
 
         Returns:
-            JSON array of search results. Each entry includes id (singleId),
-            source (1=user, 2=group, 4=mail, 16=circle), and contextual
-            metadata depending on source.
+            JSON array of search results. Each entry includes id (the singleId
+            for users/groups/circles), userId, displayName, instance, and
+            userType (1=user, 2=group, 4=mail, 8=contact, 16=circle).
         """
         client = get_client()
         data = await client.ocs_get("apps/circles/search", params={"term": term})
@@ -219,21 +219,26 @@ def _register_circle_writes(mcp: FastMCP) -> None:
         data = await client.ocs_put_json(f"apps/circles/circles/{circle_id}/join", json_data={})
         return json.dumps(data)
 
-    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
-    @require_permission(PermissionLevel.WRITE)
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
     async def leave_circle(circle_id: str) -> str:
         """Leave a circle the current user is a member of.
 
         IMPORTANT: If the current user is the sole owner, leaving destroys
         the entire circle (server behavior — no confirmation prompt). To
         avoid this, promote another member to owner via
-        update_circle_member_level(..., level="owner") first.
+        update_circle_member_level(..., level="owner") first. Because of
+        this implicit-destroy behavior, this tool requires DESTRUCTIVE
+        permission (matching leave_conversation in Talk).
 
         Args:
             circle_id: String circle id.
 
         Returns:
-            JSON of the removed-membership record.
+            JSON of the circle the user just left (circle fields: id, name,
+            config, population, initiator, …). Empty when the caller loses
+            visibility on the circle after leaving (e.g. sole-owner case
+            where the circle is destroyed).
         """
         client = get_client()
         data = await client.ocs_put_json(f"apps/circles/circles/{circle_id}/leave", json_data={})
@@ -281,7 +286,10 @@ def _register_member_writes(mcp: FastMCP) -> None:
                 someone to "owner" transfers ownership; the caller becomes admin.
 
         Returns:
-            JSON of the updated circle state.
+            JSON of the updated member (same shape as entries from
+            list_circle_members: id, userId, level, status, circleId,
+            singleId, …). Use the "level" field to confirm the new role.
+            Note: this returns the member, not the circle.
         """
         if level not in MEMBER_LEVELS:
             raise ValueError(f"Invalid level '{level}'. Must be one of: {sorted(MEMBER_LEVELS)}")
