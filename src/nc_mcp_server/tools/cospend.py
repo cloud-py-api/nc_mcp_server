@@ -422,8 +422,10 @@ def _register_bill_writes(mcp: FastMCP) -> None:
             what: Short description of the expense (e.g. "Pizza").
             amount: Total amount paid.
             payer: Member id of the person who paid.
-            payed_for: List of member ids who share the cost. Pass [] only for
-                a personal expense (rare).
+            payed_for: Non-empty list of member ids who share the cost.
+                Cospend requires at least one ower per bill — passing [] raises
+                ValueError (the server would reject it on create and silently
+                no-op on update, so we reject it up front for both).
             date: Date string "YYYY-MM-DD". Defaults to today (UTC) if both
                 date and timestamp are omitted; the underlying API requires one.
             timestamp: Alternative to date — Unix seconds. If both are set, the
@@ -445,6 +447,8 @@ def _register_bill_writes(mcp: FastMCP) -> None:
         Returns:
             JSON {"bill_id": <int>} — the integer id of the new bill.
         """
+        if not payed_for:
+            raise ValueError("payed_for must be a non-empty list of member ids")
         client = get_client()
         if timestamp is None and date is None:
             date = datetime.now(UTC).date().isoformat()
@@ -497,7 +501,10 @@ def _register_bill_writes(mcp: FastMCP) -> None:
             what: New description.
             amount: New amount.
             payer: New payer member id.
-            payed_for: New list of ower member ids (replaces, doesn't merge).
+            payed_for: New non-empty list of ower member ids (replaces,
+                doesn't merge). Passing [] raises ValueError — the server
+                no-ops silently on empty payedFor, which would look like a
+                successful update but leave owers unchanged.
             date: New "YYYY-MM-DD" date.
             timestamp: Alternative to date.
             comment: New comment.
@@ -513,6 +520,8 @@ def _register_bill_writes(mcp: FastMCP) -> None:
         Returns:
             JSON {"bill_id": <int>} confirming the updated bill id.
         """
+        if payed_for is not None and not payed_for:
+            raise ValueError("payed_for must be a non-empty list of member ids")
         client = get_client()
         body = _body(
             what=what,

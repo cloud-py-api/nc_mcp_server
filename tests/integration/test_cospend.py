@@ -189,6 +189,40 @@ class TestMembers:
         assert updated["weight"] == 3.5
 
     @pytest.mark.asyncio
+    async def test_update_activated_false_then_true_round_trip(self, nc_mcp: McpTestHelper) -> None:
+        """Soft-disable via update path, then re-enable. Catches the create/update field-name asymmetry
+        (create uses `active` int, update uses `activated` bool)."""
+        pid = "mcp-test-mem-toggle"
+        await _make_project(nc_mcp, pid)
+        member = await _make_member(nc_mcp, pid, "Toggle")
+        bob = await _make_member(nc_mcp, pid, "Bob")
+        # Member must own a bill so update(activated=False) soft-disables instead of deleting
+        await _make_bill(nc_mcp, pid, "Lunch", 10.0, payer=member["id"], payed_for=[member["id"], bob["id"]])
+
+        disabled = json.loads(
+            await nc_mcp.call(
+                "update_cospend_member",
+                project_id=pid,
+                member_id=member["id"],
+                activated=False,
+            )
+        )
+        assert disabled is not None, "member with bills should be returned as soft-disabled, not deleted"
+        assert disabled["activated"] is False
+        members = json.loads(await nc_mcp.call("list_cospend_members", project_id=pid))
+        assert next(m for m in members if m["id"] == member["id"])["activated"] is False
+
+        re_enabled = json.loads(
+            await nc_mcp.call(
+                "update_cospend_member",
+                project_id=pid,
+                member_id=member["id"],
+                activated=True,
+            )
+        )
+        assert re_enabled["activated"] is True
+
+    @pytest.mark.asyncio
     async def test_delete_removes_member_with_no_bills(self, nc_mcp: McpTestHelper) -> None:
         await _make_project(nc_mcp, "mcp-test-mem-del")
         member = await _make_member(nc_mcp, "mcp-test-mem-del", "Doomed")
@@ -464,6 +498,34 @@ class TestErrorHandling:
         await _make_project(nc_mcp, "mcp-test-bad-bill")
         with pytest.raises((ToolError, NextcloudError)):
             await nc_mcp.call("get_cospend_bill", project_id="mcp-test-bad-bill", bill_id=999_999_999)
+
+    @pytest.mark.asyncio
+    async def test_create_bill_with_empty_payed_for_rejected(self, nc_mcp: McpTestHelper) -> None:
+        """payed_for=[] is rejected client-side — server would 400, we fail fast with a clearer message."""
+        pid = "mcp-test-bill-empty-create"
+        await _make_project(nc_mcp, pid)
+        alice = await _make_member(nc_mcp, pid, "Alice")
+        with pytest.raises(ToolError, match="non-empty"):
+            await nc_mcp.call(
+                "create_cospend_bill",
+                project_id=pid,
+                what="X",
+                amount=1.0,
+                payer=alice["id"],
+                payed_for=[],
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_bill_with_empty_payed_for_rejected(self, nc_mcp: McpTestHelper) -> None:
+        """payed_for=[] on update is rejected — server would silently no-op (200 OK with owers unchanged),
+        which would look like a successful update. We reject up front instead."""
+        pid = "mcp-test-bill-empty-update"
+        await _make_project(nc_mcp, pid)
+        alice = await _make_member(nc_mcp, pid, "Alice")
+        bob = await _make_member(nc_mcp, pid, "Bob")
+        bill_id = await _make_bill(nc_mcp, pid, "X", 1.0, alice["id"], [alice["id"], bob["id"]])
+        with pytest.raises(ToolError, match="non-empty"):
+            await nc_mcp.call("update_cospend_bill", project_id=pid, bill_id=bill_id, payed_for=[])
 
 
 class TestToolRegistration:
