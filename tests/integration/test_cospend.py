@@ -353,17 +353,15 @@ class TestBills:
         assert result["nb_bills"] == 2  # search doesn't affect the count
 
     @pytest.mark.asyncio
-    async def test_list_search_term_without_limit_is_ignored(self, nc_mcp: McpTestHelper) -> None:
-        """Documents the Cospend quirk: searchTerm has no effect without a limit."""
+    async def test_list_search_term_without_limit_raises(self, nc_mcp: McpTestHelper) -> None:
+        """search_term without limit must fail fast — Cospend silently ignores it otherwise."""
         pid = "mcp-test-bill-searchnolim"
         await _make_project(nc_mcp, pid)
         alice = await _make_member(nc_mcp, pid, "Alice")
-        bob = await _make_member(nc_mcp, pid, "Bob")
-        await _make_bill(nc_mcp, pid, "Pizza", 20.0, alice["id"], [alice["id"], bob["id"]])
-        await _make_bill(nc_mcp, pid, "Sushi", 30.0, alice["id"], [alice["id"], bob["id"]])
-        result = json.loads(await nc_mcp.call("list_cospend_bills", project_id=pid, search_term="Pizz"))
-        # Without limit, both bills come back — search is silently ignored.
-        assert sorted(b["what"] for b in result["bills"]) == ["Pizza", "Sushi"]
+        await _make_member(nc_mcp, pid, "Bob")
+        await _make_bill(nc_mcp, pid, "Pizza", 20.0, alice["id"], [alice["id"]])
+        with pytest.raises(ToolError, match="limit is required"):
+            await nc_mcp.call("list_cospend_bills", project_id=pid, search_term="Pizz")
 
     @pytest.mark.asyncio
     async def test_list_payer_id_filters(self, nc_mcp: McpTestHelper) -> None:

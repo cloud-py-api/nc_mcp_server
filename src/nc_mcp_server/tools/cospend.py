@@ -208,10 +208,11 @@ def _register_bill_reads(mcp: FastMCP) -> None:
             include_bill_id: Force-include this bill id in the result even if
                 it would be paginated out (used to keep a focused bill in view).
             search_term: Substring match (case-insensitive) on bill `what`,
-                `comment`, or amount±1. NOTE: Cospend only applies the search
-                when `limit` is also set — pass any limit (e.g. 1000) to make
-                the filter take effect. Without a limit the search is silently
-                ignored.
+                `comment`, or amount±1. REQUIRES `limit` to be set — Cospend
+                silently ignores the search and returns unfiltered results
+                when no limit is provided, so this tool raises ValueError if
+                `search_term` is given without `limit`. Pass any limit
+                (e.g. 1000) to apply the filter.
             deleted: 0 = live bills (default), 1 = trashed bills only.
 
         Returns:
@@ -221,6 +222,10 @@ def _register_bill_reads(mcp: FastMCP) -> None:
             `search_term` even when search filters `bills`), `allBillIds`
             (full id list before pagination), `timestamp` (server response time).
         """
+        if search_term is not None and limit is None:
+            raise ValueError(
+                "limit is required when search_term is set (Cospend silently ignores the search otherwise)"
+            )
         client = get_client()
         params = _body(
             offset=offset,
