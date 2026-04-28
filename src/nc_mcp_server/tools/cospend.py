@@ -307,16 +307,20 @@ def _register_project_writes(mcp: FastMCP) -> None:
                 bill `repeat`: "n"=none (default), "d"=daily, "w"=weekly,
                 "b"=biweekly, "s"=semi-monthly, "m"=monthly, "y"=yearly.
             currency_name: Main currency name (free-form string, e.g. "EUR").
-            deletion_disabled: Stored as a hint flag (the Cospend frontend
-                hides delete buttons when set), but the API does NOT enforce
-                this — destructive tools still succeed. Use only for UI
-                signaling, not as a guarantee.
+                Pass empty string to clear.
+            deletion_disabled: When set, delete_cospend_bill returns HTTP 403
+                ("project deletion is disabled"). delete_cospend_project is
+                NOT gated by this flag and still succeeds. Useful as a guard
+                against accidental bill removal in shared projects.
             category_sort: Default category ordering. "a"=alphabetical (default),
                 "m"=manual (custom `order` field), "u"=most used,
                 "r"=recently used.
             payment_mode_sort: Same options as category_sort, for payment modes.
-            archived_ts: Unix timestamp marking the project as archived. Pass 0
-                to unarchive.
+            archived_ts: Archive control with three special values.
+                - 0  → archive now (server records the current Unix timestamp).
+                - -1 → unarchive (clears the field).
+                - any other int → archive at that exact Unix timestamp.
+                Note: 0 ARCHIVES the project (it does not unarchive).
 
         Returns:
             JSON {"project_id": ..., "updated": true} — the OCS endpoint
@@ -395,7 +399,8 @@ def _register_member_writes(mcp: FastMCP) -> None:
             name: New display name.
             weight: New share weight.
             activated: True = active, False = disabled (or deleted if no bills).
-            color: New hex color.
+            color: New hex color (with or without leading "#"). Pass empty
+                string to clear the color (server picks one on next display).
             user_id: Link/unlink to a Nextcloud user id. Pass empty string to
                 unlink.
 
@@ -528,7 +533,8 @@ def _register_bill_writes(mcp: FastMCP) -> None:
             payment_mode_id: New payment mode id (0 = unset).
             repeat: New repeat mode ("n", "d", "w", "b", "s", "m", "y").
             repeat_freq: New repeat frequency.
-            repeat_until: New stop date.
+            repeat_until: New stop date "YYYY-MM-DD". Pass empty string to
+                clear (repeat indefinitely).
             repeat_all_active: New owers behavior on repeat.
             deleted: 0 = restore from trash, 1 = move to trash. Use
                 delete_cospend_bill for trashing in normal flow.
@@ -568,9 +574,9 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
     async def delete_cospend_project(project_id: str) -> str:
         """Delete a Cospend project and all its members, bills, and shares.
 
-        Requires ADMIN access on the project. The Cospend API does not honor
-        the project's `deletionDisabled` flag (it's a frontend hint only), so
-        this irrevocably removes everything regardless.
+        Requires ADMIN access on the project. The project-delete endpoint does
+        NOT honor `deletionDisabled` (only delete_cospend_bill is gated by
+        that flag), so this irrevocably removes everything regardless.
 
         Args:
             project_id: String project id.
@@ -610,6 +616,10 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         move_to_trash: bool = True,
     ) -> str:
         """Delete a Cospend bill. Requires PARTICIPANT access.
+
+        Returns HTTP 403 ("project deletion is disabled") if the project has
+        `deletionDisabled` set. Use update_cospend_project to clear that flag
+        first if you need to delete bills.
 
         Args:
             project_id: String project id.

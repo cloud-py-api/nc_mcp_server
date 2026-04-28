@@ -122,6 +122,27 @@ class TestProjectLifecycle:
         assert fetched["archived_ts"] == 1_700_000_000
 
     @pytest.mark.asyncio
+    async def test_archived_ts_special_values(self, nc_mcp: McpTestHelper) -> None:
+        """archived_ts=0 archives NOW (Cospend's ARCHIVED_TS_NOW), -1 unarchives (ARCHIVED_TS_UNSET).
+
+        Documents the inverted-feeling sentinel values so we don't regress the docstring.
+        """
+        pid = "mcp-test-archive-special"
+        await _make_project(nc_mcp, pid)
+
+        # archived_ts=0 → archives at "now" (server records current Unix ts, not zero)
+        await nc_mcp.call("update_cospend_project", project_id=pid, archived_ts=0)
+        fetched = json.loads(await nc_mcp.call("get_cospend_project", project_id=pid))
+        archived = fetched["archived_ts"]
+        assert isinstance(archived, int), "archived_ts=0 must produce an int (current ts), not unarchive"
+        assert archived > 0, "archived_ts=0 must record a positive current Unix timestamp"
+
+        # archived_ts=-1 → unarchives (clears the field to None)
+        await nc_mcp.call("update_cospend_project", project_id=pid, archived_ts=-1)
+        fetched = json.loads(await nc_mcp.call("get_cospend_project", project_id=pid))
+        assert fetched["archived_ts"] is None, "archived_ts=-1 should unarchive (clear the field)"
+
+    @pytest.mark.asyncio
     async def test_delete_removes_project(self, nc_mcp: McpTestHelper) -> None:
         await _make_project(nc_mcp, "mcp-test-del")
         result = json.loads(await nc_mcp.call("delete_cospend_project", project_id="mcp-test-del"))
@@ -408,6 +429,31 @@ class TestBills:
         trashed = json.loads(await nc_mcp.call("list_cospend_bills", project_id=pid, deleted=1))
         assert trashed["nb_bills"] == 1
         assert trashed["bills"][0]["id"] == bill_id
+
+    @pytest.mark.asyncio
+    async def test_delete_bill_blocked_when_deletion_disabled(self, nc_mcp: McpTestHelper) -> None:
+        """deletionDisabled is enforced by delete_cospend_bill — server returns HTTP 403.
+
+        Counters the (incorrect) intuition that the flag is a frontend-only hint.
+        """
+        pid = "mcp-test-bill-deletion-disabled"
+        await _make_project(nc_mcp, pid)
+        alice = await _make_member(nc_mcp, pid, "Alice")
+        bob = await _make_member(nc_mcp, pid, "Bob")
+        bill_id = await _make_bill(nc_mcp, pid, "Pizza", 10.0, alice["id"], [alice["id"], bob["id"]])
+
+        await nc_mcp.call("update_cospend_project", project_id=pid, deletion_disabled=True)
+
+        with pytest.raises((ToolError, NextcloudError)):
+            await nc_mcp.call("delete_cospend_bill", project_id=pid, bill_id=bill_id)
+
+        # Bill is still alive
+        bill = json.loads(await nc_mcp.call("get_cospend_bill", project_id=pid, bill_id=bill_id))
+        assert bill["deleted"] == 0
+
+        # delete_cospend_project is NOT gated by deletionDisabled — must succeed
+        result = json.loads(await nc_mcp.call("delete_cospend_project", project_id=pid))
+        assert result["message"] == "DELETED"
 
     @pytest.mark.asyncio
     async def test_delete_without_trash_purges_bill(self, nc_mcp: McpTestHelper) -> None:
