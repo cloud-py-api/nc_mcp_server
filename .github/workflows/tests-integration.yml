@@ -29,14 +29,20 @@ jobs:
           --health-timeout 5s
           --health-retries 30
           --health-start-period 60s
+      # The Mail account sends through smtp4dev and reads from Dovecot. smtp4dev's own IMAP server has
+      # no MOVE, no folders and drops \Flagged and keywords, so it can't back the move/flag/tag tools.
       smtp4dev:
         image: rnwood/smtp4dev:latest
         env:
           ServerOptions__BasePath: /smtp4dev
         ports:
-          - 9025:25
-          - 9143:143
           - 9080:80
+      dovecot:
+        image: dovecot/dovecot:2.4.5
+        env:
+          USER_PASSWORD: test
+        ports:
+          - 9143:31143
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -77,9 +83,12 @@ jobs:
           $OCC "php occ app:install forms" || echo "forms already installed"
           $OCC "php occ app:install cospend" || echo "cospend already installed"
           $OCC "php occ app:enable circles" || echo "circles enable failed (may not be shipped)"
+          # Dovecot refuses plaintext logins, and its image ships a self-signed certificate for STARTTLS.
+          $OCC "php occ config:system:set app.mail.verify-tls-peer --value=false --type=boolean"
           SMTP4DEV_IP=$(docker inspect ${{ job.services.smtp4dev.id }} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-          echo "smtp4dev IP: $SMTP4DEV_IP"
-          $OCC "php occ mail:account:create admin 'Test Mail' test@localhost $SMTP4DEV_IP 143 none test test $SMTP4DEV_IP 25 none test test"
+          DOVECOT_IP=$(docker inspect ${{ job.services.dovecot.id }} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          echo "smtp4dev IP: $SMTP4DEV_IP, dovecot IP: $DOVECOT_IP"
+          $OCC "php occ mail:account:create admin 'Test Mail' test@localhost $DOVECOT_IP 31143 tls test test $SMTP4DEV_IP 25 none test test"
           $OCC "php occ mail:account:sync 1"
           APP_PASS=$($OCC "php occ user:auth-tokens:add admin" | grep -oP '[A-Za-z0-9]{72}' | head -1)
           if [ -z "$APP_PASS" ]; then echo "::error::Failed to generate app password"; exit 1; fi
@@ -97,7 +106,10 @@ jobs:
           NEXTCLOUD_MCP_APP_PASSWORD: "true"
           SMTP4DEV_HOST: localhost
           SMTP4DEV_HTTP_PORT: "9080"
-          SMTP4DEV_SMTP_PORT: "9025"
+          MAIL_IMAP_HOST: localhost
+          MAIL_IMAP_PORT: "9143"
+          MAIL_IMAP_USER: test
+          MAIL_IMAP_PASSWORD: test
           MAIL_RECIPIENT: test@localhost
           NC_CONTAINER: ${{ job.services.nextcloud.id }}
           MAIL_ACCOUNT_ID: "1"

@@ -4,7 +4,7 @@ import contextlib
 import logging
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterable, Callable
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote as url_quote
 
 import niquests
@@ -63,6 +63,36 @@ def _raise_for_ocs_status(response: niquests.Response, context: str = "") -> Non
     except (ValueError, KeyError, TypeError):
         pass
     detail = _STATUS_MESSAGES.get(code, f"HTTP {code}")
+    raise NextcloudError(f"{prefix}{detail}", code)
+
+
+def _app_error_message(body: object) -> str:
+    """Return the error message from an app route's JSON body, or "" when it has none.
+
+    App routes outside OCS have no common error envelope. The Mail app, for example, answers
+    client errors with {"status": "fail", "data": {"message": ...}} and server errors with
+    {"status": "error", "message": ...}.
+    """
+    if not isinstance(body, dict):
+        return ""
+    payload = cast(dict[str, Any], body)
+    data = payload.get("data")
+    message = cast(dict[str, Any], data).get("message") if isinstance(data, dict) else None
+    if message is None:
+        message = payload.get("message")
+    return message if isinstance(message, str) else ""
+
+
+def _raise_for_app_status(response: niquests.Response, context: str = "") -> None:
+    """Raise NextcloudError for a failed app route, preferring the message from its JSON body."""
+    if response.ok:
+        return
+    code = response.status_code or 0
+    prefix = f"{context}: " if context else ""
+    message = ""
+    with contextlib.suppress(ValueError, TypeError):
+        message = _app_error_message(response.json())
+    detail = message or _STATUS_MESSAGES.get(code, f"HTTP {code}")
     raise NextcloudError(f"{prefix}{detail}", code)
 
 
@@ -286,6 +316,34 @@ class NextcloudClient:
         _raise_for_ocs_status(response, f"OCS PUT {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
+
+    # --- App JSON routes ---
+
+    async def app_request_json(
+        self,
+        method: str,
+        path: str,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Call an app's non-OCS JSON route under /index.php/apps/ and return the decoded body.
+
+        Some app actions exist only as the routes an app's web UI uses (Mail's move, flag and tag
+        endpoints, for example). Those controllers require a CSRF token, and Nextcloud skips that
+        check for requests carrying ``OCS-APIRequest: true``, so the header is sent explicitly.
+        Responses are plain JSON without an OCS envelope; an empty body returns None.
+        """
+        url = f"{self._base_url}/index.php/apps/{path}"
+        kwargs: dict[str, Any] = {"headers": {"OCS-APIRequest": "true", "Accept": "application/json"}}
+        if json_data is not None:
+            kwargs["json"] = json_data
+        if params:
+            kwargs["params"] = params
+        response = await self._do_request(method, url, **kwargs)
+        _raise_for_app_status(response, f"{method} apps/{path}")
+        if not (response.content or b"").strip():
+            return None
+        return response.json()
 
     # --- WebDAV ---
 
