@@ -129,7 +129,7 @@ class TestRestoreVersion:
     async def test_restore_reverts_content(self, nc_mcp: McpTestHelper) -> None:
         file_id = await _create_versioned_file(nc_mcp, "restore")
         versions = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
-        oldest = sorted(versions, key=lambda v: int(v["version_id"]))[0]
+        oldest = min(versions, key=lambda v: int(v["version_id"]))
         await nc_mcp.call("restore_version", file_id=file_id, version_id=oldest["version_id"])
         path = f"{TEST_BASE_DIR}/{VER_PREFIX}-restore.txt"
         content = await nc_mcp.call("get_file", path=path)
@@ -139,7 +139,7 @@ class TestRestoreVersion:
     async def test_restore_returns_confirmation(self, nc_mcp: McpTestHelper) -> None:
         file_id = await _create_versioned_file(nc_mcp, "confirm")
         versions = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
-        oldest = sorted(versions, key=lambda v: int(v["version_id"]))[0]
+        oldest = min(versions, key=lambda v: int(v["version_id"]))
         result = await nc_mcp.call("restore_version", file_id=file_id, version_id=oldest["version_id"])
         assert "Restored" in result
         assert str(file_id) in result
@@ -149,7 +149,7 @@ class TestRestoreVersion:
         file_id = await _create_versioned_file(nc_mcp, "history")
         versions_before = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
         count_before = len(versions_before)
-        oldest = sorted(versions_before, key=lambda v: int(v["version_id"]))[0]
+        oldest = min(versions_before, key=lambda v: int(v["version_id"]))
         await nc_mcp.call("restore_version", file_id=file_id, version_id=oldest["version_id"])
         versions_after = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
         assert len(versions_after) >= count_before
@@ -164,7 +164,7 @@ class TestRestoreVersion:
     async def test_restore_twice_same_version(self, nc_mcp: McpTestHelper) -> None:
         file_id = await _create_versioned_file(nc_mcp, "twice")
         versions = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
-        oldest = sorted(versions, key=lambda v: int(v["version_id"]))[0]
+        oldest = min(versions, key=lambda v: int(v["version_id"]))
         await nc_mcp.call("restore_version", file_id=file_id, version_id=oldest["version_id"])
         versions_mid = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
         v1_entries = [v for v in versions_mid if v["size"] == oldest["size"]]
@@ -187,7 +187,7 @@ class TestVersionsPermissions:
     async def test_read_only_blocks_restore(self, nc_mcp: McpTestHelper, nc_mcp_read_only: McpTestHelper) -> None:
         file_id = await _create_versioned_file(nc_mcp, "perm-block")
         versions = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
-        oldest = sorted(versions, key=lambda v: int(v["version_id"]))[0]
+        oldest = min(versions, key=lambda v: int(v["version_id"]))
         with pytest.raises(ToolError, match=r"[Pp]ermission"):
             await nc_mcp_read_only.call("restore_version", file_id=file_id, version_id=oldest["version_id"])
 
@@ -195,6 +195,6 @@ class TestVersionsPermissions:
     async def test_write_allows_restore(self, nc_mcp: McpTestHelper, nc_mcp_write: McpTestHelper) -> None:
         file_id = await _create_versioned_file(nc_mcp, "perm-write")
         versions = json.loads(await nc_mcp.call("list_versions", file_id=file_id, limit=200))["data"]
-        oldest = sorted(versions, key=lambda v: int(v["version_id"]))[0]
+        oldest = min(versions, key=lambda v: int(v["version_id"]))
         result = await nc_mcp_write.call("restore_version", file_id=file_id, version_id=oldest["version_id"])
         assert "Restored" in result

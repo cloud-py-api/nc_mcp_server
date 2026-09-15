@@ -298,12 +298,18 @@ class TestMembers:
         """Promoting a member to owner transfers ownership; previous owner becomes admin (level=8)."""
         circle = await _make_circle(nc_mcp, "mcp-test-circle-xfer-owner")
         added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
-        await nc_mcp.call(
-            "update_circle_member_level",
-            circle_id=circle["id"],
-            member_id=added["id"],
-            level="owner",
-        )
+        try:
+            await nc_mcp.call(
+                "update_circle_member_level",
+                circle_id=circle["id"],
+                member_id=added["id"],
+                level="owner",
+            )
+        except ToolError as e:
+            if "FOR UPDATE" not in str(e):
+                raise
+            # circles locks member rows with SELECT ... FOR UPDATE, which Nextcloud's SQLite platform rejects.
+            pytest.skip("circles cannot transfer ownership on SQLite")
         members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
         peer_level = next(m["level"] for m in members if m.get("userId") == circle_peer)
         caller_level = next(m["level"] for m in members if m.get("userId") == get_config().user)

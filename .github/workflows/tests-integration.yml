@@ -13,8 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NC34 GA 2026-06-09: replace "32" with "34" here and in the two jobs below once nextcloud:34 publishes.
-        nextcloud-version: ["32", "33"]
+        # NC35 GA 2026-09-16: add "35" here and in the two jobs below once nextcloud:35 is on Docker Hub,
+        # and raise after_n_builds in codecov.yml from 6 to 9.
+        nextcloud-version: ["34"]
     services:
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
@@ -64,16 +65,19 @@ jobs:
         run: |
           NC_CONTAINER=${{ job.services.nextcloud.id }}
           OCC="docker exec $NC_CONTAINER su -s /bin/bash www-data -c"
-          $OCC "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean"
+          $OCC "php occ config:system:set ratelimit.protection.enabled --value=false --type=boolean"
           $OCC "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
           $OCC "php occ config:system:set loglevel --value=2 --type=integer"
-          $OCC "php occ config:system:set ratelimit_overwrite files_sharing.shareapi.createshare user limit --value=1000 --type=integer"
-          $OCC "php occ config:system:set ratelimit_overwrite files_sharing.shareapi.createshare user period --value=60 --type=integer"
+          # An app-password session never counts as password-confirmed, so user create/delete and app
+          # enable/disable only pass for exempted IPs. Test requests reach the container from the network gateway.
+          NC_GATEWAY=$(docker inspect $NC_CONTAINER --format '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}')
+          $OCC "php occ config:system:set allowed_no_password_confirmation_ranges 0 --value=$NC_GATEWAY/32"
           $OCC "php occ app:install spreed" || echo "spreed already installed"
           $OCC "php occ app:install announcementcenter" || echo "announcementcenter already installed"
           $OCC "php occ app:install collectives" || echo "collectives already installed"
           $OCC "php occ app:install mail"
           $OCC "php occ app:install forms" || echo "forms already installed"
+          $OCC "php occ app:install cospend" || echo "cospend already installed"
           $OCC "php occ app:enable circles" || echo "circles enable failed (may not be shipped)"
           SMTP4DEV_IP=$(docker inspect ${{ job.services.smtp4dev.id }} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
           echo "smtp4dev IP: $SMTP4DEV_IP"
@@ -120,7 +124,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nextcloud-version: ["32", "33"]
+        nextcloud-version: ["34"]
     services:
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
@@ -161,7 +165,7 @@ jobs:
       - name: Configure Nextcloud for testing
         run: |
           NC_CONTAINER=${{ job.services.nextcloud.id }}
-          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit.protection.enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
 
       - name: Run session cache tests (regular password)
@@ -191,7 +195,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nextcloud-version: ["32", "33"]
+        nextcloud-version: ["34"]
     services:
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
@@ -232,7 +236,7 @@ jobs:
       - name: Configure Nextcloud for testing
         run: |
           NC_CONTAINER=${{ job.services.nextcloud.id }}
-          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit_protection_enabled --value=false --type=boolean"
+          docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set ratelimit.protection.enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ config:system:set auth.bruteforce.protection.enabled --value=false --type=boolean"
           docker exec $NC_CONTAINER su -s /bin/bash www-data -c "php occ app:install spreed" || echo "spreed already installed"
 
