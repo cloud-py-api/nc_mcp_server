@@ -40,9 +40,9 @@ jobs:
           - 9143:143
           - 9080:80
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -106,7 +106,7 @@ jobs:
         run: pytest tests/integration/ -v -m integration --ignore=tests/integration/test_session_cache.py --cov=nc_mcp_server --cov-report=xml:coverage-integration.xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v5
         with:
           files: coverage-integration.xml
           flags: integration,nc${{ matrix.nextcloud-version }}
@@ -141,9 +141,9 @@ jobs:
           --health-retries 30
           --health-start-period 60s
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -177,7 +177,7 @@ jobs:
         run: pytest tests/integration/test_session_cache.py -v -m integration --cov=nc_mcp_server --cov-report=xml:coverage-session-cache.xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v5
         with:
           files: coverage-session-cache.xml
           flags: session-cache
@@ -212,9 +212,9 @@ jobs:
           --health-retries 30
           --health-start-period 60s
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -259,7 +259,7 @@ jobs:
         run: pytest tests/integration/test_user_permissions.py -v -m integration --cov=nc_mcp_server --cov-report=xml:coverage-user-perms.xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v5
         with:
           files: coverage-user-perms.xml
           flags: user-permissions
