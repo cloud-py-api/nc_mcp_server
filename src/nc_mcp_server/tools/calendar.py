@@ -9,6 +9,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from icalendar import Calendar as ICal
 from icalendar import Event as IEvent
+from icalendar import vRecur
 from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
@@ -194,14 +195,11 @@ def _format_event(ical_text: str) -> dict[str, Any]:
             "status": str(component.get("STATUS", "")),
             "all_day": _is_all_day(component.get("DTSTART")),
         }
-        if component.get("RRULE"):
-            result["rrule"] = component["RRULE"].to_ical().decode()
-        if component.get("CATEGORIES"):
-            cats = component["CATEGORIES"]
-            if isinstance(cats, list):
-                result["categories"] = [str(c) for group in cats for c in group.cats]
-            else:
-                result["categories"] = [str(c) for c in cats.cats]
+        rrule = component.get("RRULE")
+        if isinstance(rrule, vRecur) and rrule:
+            result["rrule"] = rrule.to_ical().decode()
+        if isinstance(component, IEvent) and component.categories:
+            result["categories"] = [str(c) for c in component.categories]
         return result
     msg = "No VEVENT found in calendar data"
     raise ValueError(msg)

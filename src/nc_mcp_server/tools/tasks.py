@@ -191,12 +191,8 @@ def _format_task(ical_text: str) -> dict[str, Any]:
             "due": _dt_to_str(component.get("DUE")),
             "completed": _dt_to_str(component.get("COMPLETED")),
         }
-        if component.get("CATEGORIES"):
-            cats = component["CATEGORIES"]
-            if isinstance(cats, list):
-                result["categories"] = [str(c) for group in cats for c in group.cats]
-            else:
-                result["categories"] = [str(c) for c in cats.cats]
+        if isinstance(component, ITodo) and component.categories:
+            result["categories"] = [str(c) for c in component.categories]
         return result
     msg = "No VTODO found in calendar data"
     raise ValueError(msg)

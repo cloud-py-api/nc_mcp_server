@@ -5,7 +5,7 @@
 [![Integration Tests](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/tests-integration.yml/badge.svg)](https://github.com/cloud-py-api/nc_mcp_server/actions/workflows/tests-integration.yml)
 [![codecov](https://codecov.io/gh/cloud-py-api/nc_mcp_server/graph/badge.svg)](https://codecov.io/gh/cloud-py-api/nc_mcp_server)
 
-![NextcloudVersion](https://img.shields.io/badge/Nextcloud-32%20%7C%2033-blue)
+![NextcloudVersion](https://img.shields.io/badge/Nextcloud-34%20%7C%2035-blue)
 ![PythonVersion](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)
 [![Python](https://img.shields.io/pypi/implementation/nc-mcp-server)](https://pypi.org/project/nc-mcp-server/)
 [![PyPI](https://img.shields.io/pypi/v/nc-mcp-server.svg)](https://pypi.org/project/nc-mcp-server/)
@@ -118,6 +118,11 @@ export NEXTCLOUD_MCP_UPLOAD_ROOT=      # unset (default). If set to an absolute 
 2. Go to **Settings** > **Security**
 3. Under "Devices & sessions", create a new app password
 4. Use this password for `NEXTCLOUD_PASSWORD`
+
+Since Nextcloud 34.0.1 an app-password session never counts as password-confirmed, so the admin tools Nextcloud
+guards with password confirmation (`create_user`, `delete_user`, `enable_app`, `disable_app`) fail with
+"Password confirmation is required". To use them, allow the MCP server's IP address in `config.php`
+(Nextcloud 34.0.3 and newer), e.g. `'allowed_no_password_confirmation_ranges' => ['192.0.2.10/32']`.
 
 ## Usage
 
@@ -483,7 +488,7 @@ export NEXTCLOUD_PASSWORD=admin
 pytest tests/integration/ -v
 ```
 
-CI automatically runs integration tests against the two newest released Nextcloud versions — currently 32 and 33 — using the official Docker images. Nextcloud 34 (GA 2026-06-09) joins the matrix once its image is published on Docker Hub.
+CI runs the integration tests against Nextcloud 34 using the official Docker image. Nextcloud 35 (GA 2026-09-16) joins the matrix once `nextcloud:35` is published on Docker Hub.
 
 ## About This Project
 
