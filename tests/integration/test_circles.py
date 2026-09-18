@@ -1,8 +1,11 @@
 """Integration tests for Circles (Teams) tools against a real Nextcloud instance."""
 
+import asyncio
 import contextlib
 import json
-from collections.abc import AsyncGenerator
+import time
+import uuid
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 import niquests
@@ -19,6 +22,9 @@ pytestmark = pytest.mark.integration
 
 CIRCLE_TEST_USER = "mcp-circle-test-user"
 CIRCLE_TEST_PWD = "mcp-Circle-Test-PWD-9X!"
+# Circles applies member additions, removals, joins and leaves, and circle deletions, in a loopback
+# request that runs after the API call has returned, so tests wait for the result to show up.
+CIRCLES_ASYNC_TIMEOUT = 20.0
 
 
 @pytest.fixture(scope="session")
@@ -49,16 +55,17 @@ def _skip_if_no_circles(_circles_available: bool) -> None:
 
 @pytest.fixture
 async def circle_peer(nc_config: Config) -> AsyncGenerator[str]:
-    """Ensure a second user exists for membership tests. Yields the userid."""
+    """Create a second user for membership tests and yield its user ID.
+
+    Every test gets a new user: Circles drops a deleted user's memberships asynchronously, so a
+    user re-created under the same ID could resolve to the deleted one ("singleId not found").
+    """
+    user_id = f"{CIRCLE_TEST_USER}-{uuid.uuid4().hex[:8]}"
     client = NextcloudClient(nc_config)
+    await client.ocs_post("cloud/users", data={"userid": user_id, "password": CIRCLE_TEST_PWD})
+    yield user_id
     with contextlib.suppress(Exception):
-        await client.ocs_post(
-            "cloud/users",
-            data={"userid": CIRCLE_TEST_USER, "password": CIRCLE_TEST_PWD},
-        )
-    yield CIRCLE_TEST_USER
-    with contextlib.suppress(Exception):
-        await client.ocs_delete(f"cloud/users/{CIRCLE_TEST_USER}")
+        await client.ocs_delete(f"cloud/users/{user_id}")
     await client.close()
 
 
@@ -99,6 +106,46 @@ async def _make_circle(nc_mcp: McpTestHelper, name: str) -> dict[str, Any]:
     """Create a circle and return its dict."""
     created: dict[str, Any] = json.loads(await nc_mcp.call("create_circle", name=name))
     return created
+
+
+def _has_user(user_id: str) -> Callable[[list[dict[str, Any]]], bool]:
+    return lambda members: any(m.get("userId") == user_id for m in members)
+
+
+def _lacks_user(user_id: str) -> Callable[[list[dict[str, Any]]], bool]:
+    return lambda members: not _has_user(user_id)(members)
+
+
+async def _wait_for_members(
+    nc_mcp: McpTestHelper, circle_id: str, done: Callable[[list[dict[str, Any]]], bool]
+) -> list[dict[str, Any]]:
+    """Return the circle's members once done(members) holds, or the last list after the timeout."""
+    deadline = time.monotonic() + CIRCLES_ASYNC_TIMEOUT
+    while True:
+        members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle_id))
+        if done(members) or time.monotonic() > deadline:
+            return members
+        await asyncio.sleep(0.5)
+
+
+async def _add_member(nc_mcp: McpTestHelper, circle_id: str, user_id: str) -> dict[str, Any]:
+    """Add a user to a circle and wait until Circles has stored the membership."""
+    added: dict[str, Any] = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle_id, user_id=user_id))
+    await _wait_for_members(nc_mcp, circle_id, _has_user(user_id))
+    return added
+
+
+async def _wait_for_deletion(nc_mcp: McpTestHelper, circle_id: str) -> bool:
+    """Return True once get_circle fails for the circle, or False if it still exists after the timeout."""
+    deadline = time.monotonic() + CIRCLES_ASYNC_TIMEOUT
+    while True:
+        try:
+            await nc_mcp.call("get_circle", circle_id=circle_id)
+        except (ToolError, NextcloudError):
+            return True
+        if time.monotonic() > deadline:
+            return False
+        await asyncio.sleep(0.5)
 
 
 class TestListCircles:
@@ -203,8 +250,7 @@ class TestCircleLifecycle:
         circle = await _make_circle(nc_mcp, "mcp-test-circle-delete")
         result = json.loads(await nc_mcp.call("delete_circle", circle_id=circle["id"]))
         assert result == {"deleted_circle_id": circle["id"]}
-        with pytest.raises((ToolError, NextcloudError)):
-            await nc_mcp.call("get_circle", circle_id=circle["id"])
+        assert await _wait_for_deletion(nc_mcp, circle["id"])
 
 
 class TestMembers:
@@ -223,8 +269,8 @@ class TestMembers:
         circle = await _make_circle(nc_mcp, "mcp-test-circle-add-member")
         added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
         assert added["userId"] == circle_peer
-        members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
-        assert any(m.get("userId") == circle_peer for m in members)
+        members = await _wait_for_members(nc_mcp, circle["id"], _has_user(circle_peer))
+        assert _has_user(circle_peer)(members)
 
     @pytest.mark.asyncio
     async def test_add_member_rejects_bad_type(self, nc_mcp: McpTestHelper) -> None:
@@ -240,7 +286,7 @@ class TestMembers:
     @pytest.mark.asyncio
     async def test_update_member_level(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
         circle = await _make_circle(nc_mcp, "mcp-test-circle-promote")
-        added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
+        added = await _add_member(nc_mcp, circle["id"], circle_peer)
         await nc_mcp.call(
             "update_circle_member_level",
             circle_id=circle["id"],
@@ -254,7 +300,7 @@ class TestMembers:
     @pytest.mark.asyncio
     async def test_update_level_rejects_bad_value(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
         circle = await _make_circle(nc_mcp, "mcp-test-circle-bad-level")
-        added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
+        added = await _add_member(nc_mcp, circle["id"], circle_peer)
         with pytest.raises((ToolError, ValueError), match=r"[Ii]nvalid level"):
             await nc_mcp.call(
                 "update_circle_member_level",
@@ -266,7 +312,7 @@ class TestMembers:
     @pytest.mark.asyncio
     async def test_remove_member(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
         circle = await _make_circle(nc_mcp, "mcp-test-circle-kick")
-        added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
+        added = await _add_member(nc_mcp, circle["id"], circle_peer)
         result = json.loads(
             await nc_mcp.call(
                 "remove_circle_member",
@@ -275,8 +321,8 @@ class TestMembers:
             )
         )
         assert result == {"removed_member_id": added["id"]}
-        members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
-        assert not any(m.get("userId") == circle_peer for m in members)
+        members = await _wait_for_members(nc_mcp, circle["id"], _lacks_user(circle_peer))
+        assert _lacks_user(circle_peer)(members)
 
     @pytest.mark.asyncio
     async def test_full_details_adds_circle_field(self, nc_mcp: McpTestHelper) -> None:
@@ -297,7 +343,7 @@ class TestMembers:
     async def test_promote_to_owner_transfers_and_demotes_caller(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
         """Promoting a member to owner transfers ownership; previous owner becomes admin (level=8)."""
         circle = await _make_circle(nc_mcp, "mcp-test-circle-xfer-owner")
-        added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
+        added = await _add_member(nc_mcp, circle["id"], circle_peer)
         try:
             await nc_mcp.call(
                 "update_circle_member_level",
@@ -331,8 +377,8 @@ class TestJoinLeave:
             joined = json.loads(await nc_mcp.call("join_circle", circle_id=circle["id"]))
             assert joined["userId"] == circle_peer
             assert joined["status"] == "Member"
-        members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
-        assert any(m.get("userId") == circle_peer for m in members)
+        members = await _wait_for_members(nc_mcp, circle["id"], _has_user(circle_peer))
+        assert _has_user(circle_peer)(members)
 
     @pytest.mark.asyncio
     async def test_join_non_open_fails(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
@@ -347,19 +393,18 @@ class TestJoinLeave:
     async def test_leave_as_member(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
         """Admin adds peer; peer calls leave_circle; peer is gone from member list."""
         circle = await _make_circle(nc_mcp, "mcp-test-circle-leave")
-        await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer)
+        await _add_member(nc_mcp, circle["id"], circle_peer)
         async with _as_peer(circle_peer, CIRCLE_TEST_PWD):
             await nc_mcp.call("leave_circle", circle_id=circle["id"])
-        members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
-        assert not any(m.get("userId") == circle_peer for m in members)
+        members = await _wait_for_members(nc_mcp, circle["id"], _lacks_user(circle_peer))
+        assert _lacks_user(circle_peer)(members)
 
     @pytest.mark.asyncio
     async def test_sole_owner_leave_destroys_circle(self, nc_mcp: McpTestHelper) -> None:
         """Sole-owner leave silently destroys the circle — documented server behavior."""
         circle = await _make_circle(nc_mcp, "mcp-test-circle-sole-leave")
         await nc_mcp.call("leave_circle", circle_id=circle["id"])
-        with pytest.raises((ToolError, NextcloudError)):
-            await nc_mcp.call("get_circle", circle_id=circle["id"])
+        assert await _wait_for_deletion(nc_mcp, circle["id"])
 
 
 class TestSearch:
