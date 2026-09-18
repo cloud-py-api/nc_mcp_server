@@ -354,7 +354,7 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `list_mail_messages` | read | List messages in a mailbox |
 | `get_mail_message` | read | Get full message content |
 | `send_mail` | write | Send an email |
-| `move_mail_message` | write | Move a message to another mailbox (its ID changes) |
+| `move_mail_message` | write | Move a message to another mailbox of the same account (its ID changes) |
 | `set_mail_message_flags` | write | Mark as read/unread, starred, answered |
 | `create_mail_tag` | write | Create a tag, or get the existing one with the same label |
 | `add_mail_message_tag` | write | Tag a message |

@@ -298,7 +298,10 @@ def _register_triage_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
     async def move_mail_message(message_id: int, destination_mailbox_id: int) -> str:
-        """Move a message to another mailbox (folder), in the same or another mail account.
+        """Move a message to another mailbox (folder) of the same mail account.
+
+        Mail cannot move messages between accounts; such a move fails with
+        "It is not possible to move across accounts yet".
 
         The moved message gets a new ID, so message_id is no longer valid afterwards and must not
         be reused. IMAP UIDs are per mailbox, and Nextcloud assigns the new ID when it syncs the
@@ -307,7 +310,8 @@ def _register_triage_tools(mcp: FastMCP) -> None:
 
         Args:
             message_id: The message database ID. Use list_mail_messages to find it.
-            destination_mailbox_id: The target mailbox ID. Use list_mailboxes to find it.
+            destination_mailbox_id: The target mailbox ID, in the message's own account.
+                Use list_mailboxes to find it.
 
         Returns:
             Confirmation message on success.
