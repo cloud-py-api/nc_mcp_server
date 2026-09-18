@@ -66,9 +66,19 @@ class TestMessageOutputIncludesTags:
         client.ocs_get.return_value = {"id": 11, "subject": "tagged", "body": "hi", "flags": {"seen": True}}
         client.app_request_json.return_value = {"databaseId": 11, "tags": {"$needs_reply": TAG}}
         result = json.loads(await _call(mcp, "get_mail_message", message_id=11))
-        client.app_request_json.assert_awaited_once_with("GET", "mail/api/messages/11")
+        client.app_request_json.assert_awaited_once_with("GET", "mail/api/messages/11", json_data=None)
         assert result["tags"] == [{"display_name": "Needs Reply", "imap_label": "$needs_reply"}]
         assert result["flags"] == ["seen"]
+
+    @pytest.mark.asyncio
+    async def test_get_mail_message_unknown_id_says_message_not_found(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        client.ocs_get.side_effect = NextcloudError("OCS GET apps/mail/message/11: Not found.", 404)
+        with pytest.raises(ToolError, match="Message 11 was not found or is not accessible"):
+            await _call(mcp, "get_mail_message", message_id=11)
+        client.app_request_json.assert_not_awaited()
 
 
 class TestMoveMailMessage:

@@ -386,7 +386,7 @@ class TestGetMailMessage:
 
     @pytest.mark.asyncio
     async def test_nonexistent_message_fails(self, nc_mcp: McpTestHelper) -> None:
-        with pytest.raises(ToolError):
+        with pytest.raises(ToolError, match="Message 999999 was not found or is not accessible"):
             await nc_mcp.call("get_mail_message", message_id=999999)
 
     @pytest.mark.asyncio
@@ -487,7 +487,7 @@ class TestMoveMailMessage:
         assert moved["mailbox_id"] == archive_mailbox
         full = json.loads(await nc_mcp.call("get_mail_message", message_id=moved["id"]))
         assert full["subject"] == message["subject"]
-        with pytest.raises(ToolError):
+        with pytest.raises(ToolError, match="was not found or is not accessible"):
             await nc_mcp.call("get_mail_message", message_id=message["id"])
 
     @pytest.mark.asyncio

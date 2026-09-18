@@ -274,10 +274,16 @@ def _register_read_tools(mcp: FastMCP) -> None:
             body, flags, tags (display_name and imap_label, if any), and attachments list (if any).
         """
         client = get_client()
-        data = await client.ocs_get(f"{MAIL_OCS}/message/{message_id}")
+        try:
+            data = await client.ocs_get(f"{MAIL_OCS}/message/{message_id}")
+        except NextcloudError as e:
+            # Mail says "Account not found." for any message ID it does not know.
+            if e.status_code == 404:
+                raise NextcloudError(_message_not_found(message_id), 404) from e
+            raise
         result = _format_message_full(data)
         # The OCS message endpoint leaves tags out; the Mail web UI's message route includes them.
-        details = await client.app_request_json("GET", f"{MAIL_API}/messages/{message_id}")
+        details = await _mail_api("GET", f"messages/{message_id}", _message_not_found(message_id))
         tags = _format_tags(details.get("tags") if details else None)
         if tags:
             result["tags"] = tags
