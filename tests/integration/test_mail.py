@@ -73,19 +73,23 @@ def _deliver_test_email(subject: str, body: str = "test body") -> None:
             imap.logout()
 
 
-def _sync_mail_account(account_id: int) -> None:
-    """Trigger a mailbox sync so new messages appear in the NC database."""
+def _occ(command: str) -> None:
+    """Run an occ command in the Nextcloud container."""
     container = os.environ.get("NC_CONTAINER", "ncmcp-nextcloud-1")
-    cmd = f"php occ mail:account:sync {account_id}"
     result = subprocess.run(
-        ["docker", "exec", container, "su", "-s", "/bin/bash", "www-data", "-c", cmd],
+        ["docker", "exec", container, "su", "-s", "/bin/bash", "www-data", "-c", f"php occ {command}"],
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
     )
     if result.returncode != 0:
-        raise AssertionError(f"mail:account:sync {account_id} failed: {result.stderr}")
+        raise AssertionError(f"occ {command} failed: {result.stderr}")
+
+
+def _sync_mail_account(account_id: int) -> None:
+    """Trigger a mailbox sync so new messages appear in the NC database."""
+    _occ(f"mail:account:sync {account_id}")
 
 
 async def _sync_mailbox(nc_mcp: McpTestHelper, mailbox_id: int) -> None:
@@ -385,6 +389,16 @@ class TestGetMailMessage:
         with pytest.raises(ToolError):
             await nc_mcp.call("get_mail_message", message_id=999999)
 
+    @pytest.mark.asyncio
+    async def test_reading_does_not_mark_as_read(self, nc_mcp: McpTestHelper) -> None:
+        account_id, inbox_id, message = await _deliver_and_find(nc_mcp, "stays-unread")
+        await nc_mcp.call("get_mail_message", message_id=message["id"])
+        # Sync so the listing shows the flags Dovecot has now, not the ones cached at delivery.
+        _sync_mail_account(account_id)
+        listed = await _find_message(nc_mcp, inbox_id, message["subject"])
+        assert listed is not None
+        assert "seen" not in listed.get("flags", [])
+
 
 class TestSendMail:
     @pytest.mark.asyncio
@@ -477,14 +491,31 @@ class TestMoveMailMessage:
             await nc_mcp.call("get_mail_message", message_id=message["id"])
 
     @pytest.mark.asyncio
-    async def test_move_keeps_flags(self, nc_mcp: McpTestHelper, archive_mailbox: int) -> None:
-        _, _, message = await _deliver_and_find(nc_mcp, "move-flags")
-        await nc_mcp.call("set_mail_message_flags", message_id=message["id"], flagged=True)
-        await nc_mcp.call("move_mail_message", message_id=message["id"], destination_mailbox_id=archive_mailbox)
-        await _sync_mailbox(nc_mcp, archive_mailbox)
-        moved = await _find_message(nc_mcp, archive_mailbox, message["subject"])
-        assert moved is not None
-        assert "flagged" in moved.get("flags", [])
+    async def test_move_to_current_mailbox_keeps_id(self, nc_mcp: McpTestHelper) -> None:
+        _, inbox_id, message = await _deliver_and_find(nc_mcp, "move-same")
+        result = await nc_mcp.call("move_mail_message", message_id=message["id"], destination_mailbox_id=inbox_id)
+        assert result == f"Message {message['id']} is already in mailbox {inbox_id}; nothing was moved."
+        listed = await _find_message(nc_mcp, inbox_id, message["subject"])
+        assert listed is not None
+        assert listed["id"] == message["id"]
+
+    @pytest.mark.asyncio
+    async def test_move_keeps_flags_and_tags(self, nc_mcp: McpTestHelper, archive_mailbox: int) -> None:
+        account_id, _, message = await _deliver_and_find(nc_mcp, "move-flags")
+        tag = json.loads(
+            await nc_mcp.call("create_mail_tag", display_name=f"{UNIQUE} moved {uuid.uuid4().hex[:8]}", color="#aa5500")
+        )
+        try:
+            await nc_mcp.call("set_mail_message_flags", message_id=message["id"], flagged=True)
+            await nc_mcp.call("add_mail_message_tag", message_id=message["id"], imap_label=tag["imap_label"])
+            await nc_mcp.call("move_mail_message", message_id=message["id"], destination_mailbox_id=archive_mailbox)
+            await _sync_mailbox(nc_mcp, archive_mailbox)
+            moved = await _find_message(nc_mcp, archive_mailbox, message["subject"])
+            assert moved is not None
+            assert "flagged" in moved.get("flags", [])
+            assert _tag_ref(tag) in moved.get("tags", [])
+        finally:
+            await _delete_tag(nc_mcp, account_id, tag["id"])
 
     @pytest.mark.asyncio
     async def test_nonexistent_message_raises(self, nc_mcp: McpTestHelper, archive_mailbox: int) -> None:
@@ -585,6 +616,22 @@ class TestMailTags:
             assert _tag_ref(tag) not in listed.get("tags", [])
         finally:
             await _delete_tag(nc_mcp, account_id, tag["id"])
+
+    @pytest.mark.asyncio
+    async def test_builtin_important_tag(self, nc_mcp: McpTestHelper) -> None:
+        account_id, inbox_id, message = await _deliver_and_find(nc_mcp, "tag-builtin")
+        # The Mail app gives new accounts its built-in tags; occ mail:account:create does not.
+        _occ(f"mail:repair:tags {account_id}")
+        added = json.loads(await nc_mcp.call("add_mail_message_tag", message_id=message["id"], imap_label="$label1"))
+        assert added["tag"]["imap_label"] == "$label1"
+        listed = await _find_message(nc_mcp, inbox_id, message["subject"])
+        assert listed is not None
+        assert "$label1" in [t["imap_label"] for t in listed.get("tags", [])]
+
+        await nc_mcp.call("remove_mail_message_tag", message_id=message["id"], imap_label="$label1")
+        listed = await _find_message(nc_mcp, inbox_id, message["subject"])
+        assert listed is not None
+        assert "$label1" not in [t["imap_label"] for t in listed.get("tags", [])]
 
     @pytest.mark.asyncio
     async def test_unknown_label_raises(self, nc_mcp: McpTestHelper) -> None:

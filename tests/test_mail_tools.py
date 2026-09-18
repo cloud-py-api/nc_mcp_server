@@ -2,7 +2,7 @@
 
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from mcp.server.fastmcp import FastMCP
@@ -77,25 +77,54 @@ class TestMoveMailMessage:
         self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
     ) -> None:
         mcp, client = mcp_with_mock_client
-        client.app_request_json.return_value = []
+        client.app_request_json.side_effect = [{"databaseId": 5, "mailboxId": 3}, []]
         result = await _call(mcp, "move_mail_message", message_id=5, destination_mailbox_id=9)
-        client.app_request_json.assert_awaited_once_with(
-            "POST", "mail/api/messages/5/move", json_data={"destFolderId": 9}
-        )
+        assert client.app_request_json.await_args_list == [
+            call("GET", "mail/api/messages/5", json_data=None),
+            call("POST", "mail/api/messages/5/move", json_data={"destFolderId": 9}),
+        ]
         assert "no longer valid" in result
 
     @pytest.mark.asyncio
-    async def test_forbidden_becomes_not_found_message(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
+    async def test_message_already_in_destination_is_not_moved(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
         mcp, client = mcp_with_mock_client
-        client.app_request_json.side_effect = NextcloudError("POST apps/mail/api/messages/5/move: Forbidden.", 403)
+        client.app_request_json.return_value = {"databaseId": 5, "mailboxId": 9}
+        result = await _call(mcp, "move_mail_message", message_id=5, destination_mailbox_id=9)
+        client.app_request_json.assert_awaited_once_with("GET", "mail/api/messages/5", json_data=None)
+        assert result == "Message 5 is already in mailbox 9; nothing was moved."
+
+    @pytest.mark.asyncio
+    async def test_unknown_message_becomes_not_found_message(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        client.app_request_json.side_effect = NextcloudError("GET apps/mail/api/messages/5: Forbidden.", 403)
+        with pytest.raises(ToolError, match=r"Message 5 was not found or is not accessible"):
+            await _call(mcp, "move_mail_message", message_id=5, destination_mailbox_id=9)
+        client.app_request_json.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_forbidden_move_becomes_not_found_message(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        client.app_request_json.side_effect = [
+            {"databaseId": 5, "mailboxId": 3},
+            NextcloudError("POST apps/mail/api/messages/5/move: Forbidden.", 403),
+        ]
         with pytest.raises(ToolError, match=r"Message 5 or mailbox 9 was not found or is not accessible"):
             await _call(mcp, "move_mail_message", message_id=5, destination_mailbox_id=9)
 
     @pytest.mark.asyncio
     async def test_other_errors_pass_through(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
         mcp, client = mcp_with_mock_client
-        client.app_request_json.side_effect = NextcloudError("Mailbox 9 does not exist", 400)
-        with pytest.raises(ToolError, match="Mailbox 9 does not exist"):
+        client.app_request_json.side_effect = [
+            {"databaseId": 5, "mailboxId": 3},
+            NextcloudError("It is not possible to move across accounts yet", 500),
+        ]
+        with pytest.raises(ToolError, match="It is not possible to move across accounts yet"):
             await _call(mcp, "move_mail_message", message_id=5, destination_mailbox_id=9)
 
 
@@ -161,6 +190,64 @@ class TestCreateMailTag:
         await _call(mcp, "create_mail_tag", display_name="Needs Reply", color="#fff")
         client.app_request_json.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "display_name", ["a/b", "x (y)", "x)", "br]acket", "{x", 'say "hi"', "back\\slash", "100%", "*"]
+    )
+    async def test_rejects_characters_imap_keywords_cannot_hold(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock], display_name: str
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        with pytest.raises(ToolError, match="must not contain any of"):
+            await _call(mcp, "create_mail_tag", display_name=display_name, color="#0082c9")
+        client.app_request_json.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("display_name", "label"),
+        [
+            ("Junk", "$junk"),
+            ("NotJunk", "$notjunk"),
+            ("phishing", "$phishing"),
+            ("Forwarded", "$forwarded"),
+            ("MDNSent", "$mdnsent"),
+        ],
+    )
+    async def test_rejects_names_mail_reads_as_flags(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock], display_name: str, label: str
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        with pytest.raises(ToolError, match=rf"IMAP label \{label}, which Mail reads as a message flag"):
+            await _call(mcp, "create_mail_tag", display_name=display_name, color="#0082c9")
+        client.app_request_json.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("display_name", "builtin"),
+        [("Important", "$label1"), ("important", "$label1"), ("LabelWork", "$label2"), ("labeltodo", "$label4")],
+    )
+    async def test_points_names_mail_folds_into_builtin_tags_to_the_builtin_label(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock], display_name: str, builtin: str
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        with pytest.raises(ToolError, match=rf"built-in tag \{builtin}\. Pass \{builtin} to add_mail_message_tag"):
+            await _call(mcp, "create_mail_tag", display_name=display_name, color="#0082c9")
+        client.app_request_json.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "display_name", ["Not Junk", "Very Important", "Work", "[x} #1?", "Q&A", "Ärger", "日本語", "Label1"]
+    )
+    async def test_accepts_names_that_make_ordinary_tags(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock], display_name: str
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        client.app_request_json.return_value = TAG
+        await _call(mcp, "create_mail_tag", display_name=display_name, color="#0082c9")
+        client.app_request_json.assert_awaited_once_with(
+            "POST", "mail/api/tags", json_data={"displayName": display_name, "color": "#0082c9"}
+        )
+
 
 class TestMessageTagging:
     @pytest.mark.asyncio
@@ -172,9 +259,10 @@ class TestMessageTagging:
     ) -> None:
         mcp, client = mcp_with_mock_client
         client.app_request_json.return_value = TAG
-        result = json.loads(await _call(mcp, tool, message_id=5, imap_label="$needs reply/x"))
+        # Labels from names with "&", "#" or "?" would otherwise break the URL.
+        result = json.loads(await _call(mcp, tool, message_id=5, imap_label="$q&-a#1?"))
         client.app_request_json.assert_awaited_once_with(
-            method, "mail/api/messages/5/tags/%24needs%20reply%2Fx", json_data=None
+            method, "mail/api/messages/5/tags/%24q%26-a%231%3F", json_data=None
         )
         assert result == {
             "message_id": 5,

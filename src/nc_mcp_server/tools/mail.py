@@ -17,6 +17,21 @@ MAIL_OCS = "apps/mail"
 MAIL_API = "mail/api"
 MAX_TAG_NAME_LENGTH = 128
 TAG_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+# Mail copies these characters from a tag name into the tag's IMAP keyword unchanged. Mail servers
+# reject keywords with any of them except "/", but Mail saves the tag on the message anyway, and the
+# next sync drops it. A "/" cannot be passed to Mail's tag routes, so such a tag can never be added.
+INVALID_TAG_NAME_CHARS = '(){]"\\%*/'
+# Keywords Mail reads as message flags instead of tags when it syncs a mailbox.
+FLAG_KEYWORDS = frozenset({"$junk", "$notjunk", "$phishing", "$forwarded", "$mdnsent"})
+# Keywords Mail replaces with the label of one of its built-in tags when it syncs a mailbox.
+BUILTIN_TAG_ALIASES = {
+    "$important": "$label1",
+    "$labelimportant": "$label1",
+    "$labelwork": "$label2",
+    "$labelpersonal": "$label3",
+    "$labeltodo": "$label4",
+    "$labellater": "$label5",
+}
 
 
 def _format_account(account: dict[str, Any]) -> dict[str, Any]:
@@ -143,6 +158,34 @@ def _tag_not_found(message_id: int, imap_label: str) -> str:
         f"Message {message_id} was not found, or you have no tag with IMAP label '{imap_label}'. "
         "Use create_mail_tag to create the tag and get its label."
     )
+
+
+def _check_tag_name(name: str) -> None:
+    """Reject tag names Mail would turn into an IMAP keyword that cannot work as a tag."""
+    if not name:
+        raise ValueError("display_name must not be empty.")
+    if len(name) > MAX_TAG_NAME_LENGTH:
+        raise ValueError(f"display_name must be at most {MAX_TAG_NAME_LENGTH} characters.")
+    if any(c in INVALID_TAG_NAME_CHARS for c in name):
+        raise ValueError(
+            "display_name must not contain any of ( ) { ] \" \\ % * /: Mail builds the tag's IMAP keyword "
+            "from the name, and a keyword with these characters cannot be stored or used."
+        )
+    if not name.isascii():
+        return
+    # Mail's ImapFlag::create, for ASCII names: spaces become underscores, lowercased, "$" prefix.
+    label = "$" + name.replace(" ", "_").lower()
+    if label in FLAG_KEYWORDS:
+        raise ValueError(
+            f"'{name}' would get the IMAP label {label}, which Mail reads as a message flag, not a tag. "
+            "Choose another name."
+        )
+    builtin = BUILTIN_TAG_ALIASES.get(label)
+    if builtin is not None:
+        raise ValueError(
+            f"'{name}' would get the IMAP label {label}, which Mail replaces with its built-in tag {builtin}. "
+            f"Pass {builtin} to add_mail_message_tag instead of creating a tag."
+        )
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
@@ -306,7 +349,8 @@ def _register_triage_tools(mcp: FastMCP) -> None:
         The moved message gets a new ID, so message_id is no longer valid afterwards and must not
         be reused. IMAP UIDs are per mailbox, and Nextcloud assigns the new ID when it syncs the
         destination mailbox. The inbox and mailboxes with background sync enabled are synced
-        automatically; other folders are synced when opened in the Mail app.
+        automatically; other folders are synced when opened in the Mail app. A message that is
+        already in the destination mailbox is left alone and keeps its ID.
 
         Args:
             message_id: The message database ID. Use list_mail_messages to find it.
@@ -316,6 +360,11 @@ def _register_triage_tools(mcp: FastMCP) -> None:
         Returns:
             Confirmation message on success.
         """
+        # IMAP happily moves a message into its own mailbox, which gives it a new ID and hides it
+        # until the mailbox syncs again.
+        message = await _mail_api("GET", f"messages/{message_id}", _message_not_found(message_id))
+        if isinstance(message, dict) and cast(dict[str, Any], message).get("mailboxId") == destination_mailbox_id:
+            return f"Message {message_id} is already in mailbox {destination_mailbox_id}; nothing was moved."
         await _mail_api(
             "POST",
             f"messages/{message_id}/move",
@@ -367,9 +416,12 @@ def _register_tag_tools(mcp: FastMCP) -> None:
         Tags belong to the current user and are stored on messages as IMAP keywords. Mail derives
         the IMAP label from the display name (for example "Needs Reply" becomes "$needs_reply").
         If a tag with that label already exists, it is returned unchanged, including its color.
+        Mail's built-in tags Important, Work, Personal, To Do and Later have the labels $label1 to
+        $label5; tag messages with those labels rather than creating tags with the same names.
 
         Args:
-            display_name: Tag name shown in the Mail app (at most 128 characters).
+            display_name: Tag name shown in the Mail app (at most 128 characters, none of
+                ( ) { ] " \\ % * /).
             color: Hex color such as "#0082c9".
 
         Returns:
@@ -377,10 +429,7 @@ def _register_tag_tools(mcp: FastMCP) -> None:
             add_mail_message_tag and remove_mail_message_tag.
         """
         name = display_name.strip()
-        if not name:
-            raise ValueError("display_name must not be empty.")
-        if len(name) > MAX_TAG_NAME_LENGTH:
-            raise ValueError(f"display_name must be at most {MAX_TAG_NAME_LENGTH} characters.")
+        _check_tag_name(name)
         if not TAG_COLOR_RE.match(color):
             raise ValueError(f"Invalid color '{color}'. Use a hex color such as '#0082c9'.")
         client = get_client()
@@ -395,7 +444,9 @@ def _register_tag_tools(mcp: FastMCP) -> None:
         Args:
             message_id: The message database ID. Use list_mail_messages to find it.
             imap_label: The tag's IMAP label (for example "$needs_reply"), as returned by
-                create_mail_tag or shown in the tags of list_mail_messages.
+                create_mail_tag or shown in the tags of list_mail_messages. Mail's built-in
+                tags use $label1 (Important), $label2 (Work), $label3 (Personal),
+                $label4 (To Do) and $label5 (Later).
 
         Returns:
             JSON object with message_id and the tag (id, display_name, imap_label, color).
