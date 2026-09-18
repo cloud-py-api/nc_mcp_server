@@ -1,11 +1,14 @@
-"""Nextcloud Talk tools — conversations, messages, participants, and polls via OCS API."""
+"""Nextcloud Talk tools - conversations, messages, threads, participants, and polls via OCS API."""
 
+import contextlib
 import json
+from collections.abc import Generator
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
+from ..client import NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -44,6 +47,15 @@ _RESULT_MODES: dict[int, str] = {
     0: "public",
     1: "hidden",
 }
+
+# Per-thread notification levels (same values as the conversation-level setting)
+_THREAD_NOTIFICATION_LEVELS: dict[int, str] = {
+    0: "default",
+    1: "always",
+    2: "mention",
+    3: "never",
+}
+_THREAD_NOTIFICATION_LEVEL_IDS: dict[str, int] = {name: level for level, name in _THREAD_NOTIFICATION_LEVELS.items()}
 
 
 def _format_poll(poll: dict[str, Any]) -> dict[str, Any]:
@@ -89,16 +101,30 @@ def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
 
 
 def _format_message_compact(msg: dict[str, Any]) -> str:
-    """Format a message as a compact single line: [id] author: text."""
+    """Format a message as a compact single line: [id] author: text.
+
+    A message inside a thread gets a marker after the author: '[thread <id> "<title>"]'
+    on the thread's first message and "[thread <id>]" on the rest of the thread.
+    """
     msg_id = msg.get("id", 0)
     author = msg.get("actorDisplayName", "unknown")
     text = msg.get("message", "")
-    return f"[{msg_id}] {author}: {text}"
+    if not msg.get("isThread"):
+        return f"[{msg_id}] {author}: {text}"
+    thread_id = msg.get("threadId", msg_id)
+    marker = f"thread {thread_id}"
+    if thread_id == msg_id:
+        marker += " " + json.dumps(msg.get("threadTitle", ""), ensure_ascii=False)
+    return f"[{msg_id}] {author} [{marker}]: {text}"
 
 
 def _format_message_full(msg: dict[str, Any]) -> dict[str, Any]:
-    """Extract the most useful fields from a raw message object."""
-    return {
+    """Extract the most useful fields from a raw message object.
+
+    thread_id is 0 unless the message belongs to a thread; thread messages also carry thread_title.
+    """
+    in_thread = bool(msg.get("isThread"))
+    result: dict[str, Any] = {
         "id": msg["id"],
         "actor_type": msg.get("actorType", ""),
         "actor_id": msg.get("actorId", ""),
@@ -108,7 +134,101 @@ def _format_message_full(msg: dict[str, Any]) -> dict[str, Any]:
         "message_type": msg.get("messageType", ""),
         "system_message": msg.get("systemMessage", ""),
         "is_replyable": msg.get("isReplyable", False),
+        "thread_id": msg.get("threadId", msg["id"]) if in_thread else 0,
     }
+    if in_thread:
+        result["thread_title"] = msg.get("threadTitle", "")
+    return result
+
+
+def _format_thread(info: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a TalkThreadInfo object; its first and last messages use the compact line format."""
+    thread: dict[str, Any] = info.get("thread") or {}
+    attendee: dict[str, Any] = info.get("attendee") or {}
+    level = attendee.get("notificationLevel", 0)
+    first = info.get("first")
+    last = info.get("last")
+    return {
+        "thread_id": thread.get("id", 0),
+        "token": thread.get("roomToken", ""),
+        "title": thread.get("title", ""),
+        "num_replies": thread.get("numReplies", 0),
+        "last_activity": thread.get("lastActivity", 0),
+        "notification_level": _THREAD_NOTIFICATION_LEVELS.get(level, f"unknown({level})"),
+        "first": _format_message_compact(first) if first else None,
+        "last": _format_message_compact(last) if last else None,
+    }
+
+
+def _format_message_list(messages: list[dict[str, Any]], include_system: bool, thread_id: int) -> str:
+    """Render get_messages output: one compact line per message plus a pagination footer."""
+    if not include_system:
+        messages = [m for m in messages if not m.get("systemMessage")]
+    lines = [_format_message_compact(msg) for msg in messages]
+    if messages:
+        oldest_id = min(m["id"] for m in messages)
+        next_call = f"before_message_id={oldest_id}"
+        if thread_id:
+            next_call += f", thread_id={thread_id}"
+        lines.append(f"\n--- {len(messages)} messages. For older messages, call with {next_call} ---")
+    return "\n".join(lines)
+
+
+def _build_message_payload(message: str, reply_to: int, thread_id: int, thread_title: str) -> dict[str, Any]:
+    """Validate the reply and thread arguments of send_message and build the POST body."""
+    if not message.strip():
+        raise ValueError("message must not be empty.")
+    if thread_title and (reply_to or thread_id):
+        raise ValueError(
+            "thread_title starts a new thread and cannot be combined with reply_to or thread_id. "
+            "To post into an existing thread, pass thread_id alone."
+        )
+    if thread_id and reply_to:
+        raise ValueError(
+            "Pass either thread_id or reply_to, not both. "
+            "A reply to a message that is inside a thread is posted into that thread automatically."
+        )
+    post_data: dict[str, Any] = {"message": message}
+    if reply_to:
+        post_data["replyTo"] = reply_to
+    if thread_id:
+        post_data["threadId"] = thread_id
+    if thread_title:
+        title = thread_title.strip()
+        if not title:
+            raise ValueError("thread_title must not be blank.")
+        post_data["threadTitle"] = title
+    return post_data
+
+
+def _parse_thread_notification_level(level: str) -> int:
+    """Map a notification level name to the integer Talk expects."""
+    level_id = _THREAD_NOTIFICATION_LEVEL_IDS.get(level.strip().lower())
+    if level_id is None:
+        valid = ", ".join(_THREAD_NOTIFICATION_LEVEL_IDS)
+        raise ValueError(f"Invalid level '{level}'. Must be one of: {valid}")
+    return level_id
+
+
+@contextlib.contextmanager
+def _thread_errors(token: str, thread_id: int, not_found_status: int = 404, forbidden: str = "") -> Generator[None]:
+    """Replace the generic errors of a thread request with ones that name the thread.
+
+    Talk answers an unknown thread with an empty OCS message, which the client reports as
+    "Not found." (or "HTTP 400" when sending into one), so the caller could not tell what was wrong.
+    """
+    try:
+        yield
+    except NextcloudError as e:
+        if thread_id and e.status_code == not_found_status:
+            raise NextcloudError(
+                f"Thread {thread_id} not found in conversation {token} (or the conversation does not exist). "
+                "A thread ID is the ID of the thread's first message; use list_threads to find them.",
+                e.status_code,
+            ) from e
+        if forbidden and e.status_code == 403:
+            raise NextcloudError(forbidden, e.status_code) from e
+        raise
 
 
 def _format_participant(p: dict[str, Any]) -> dict[str, Any]:
@@ -189,11 +309,15 @@ def _register_read_tools(mcp: FastMCP) -> None:
         limit: int = 50,
         before_message_id: int = 0,
         include_system: bool = False,
+        thread_id: int = 0,
     ) -> str:
         """Get chat messages from a Talk conversation.
 
         Returns messages in reverse chronological order (newest first).
-        Uses a compact format: "[id] author: message text" — one line per message.
+        Uses a compact format: "[id] author: message text" - one line per message.
+        Messages inside a thread are marked after the author: the thread's first
+        message as '[id] author [thread <thread_id> "<title>"]: text', the rest of
+        the thread as "[id] author [thread <thread_id>]: text".
 
         IMPORTANT: Start with a small limit (20-50). If you need more context,
         use before_message_id with the oldest message ID from the previous call
@@ -207,7 +331,9 @@ def _register_read_tools(mcp: FastMCP) -> None:
                                Use the smallest message ID from a previous call.
                                Default 0 means start from the newest message.
             include_system: Include system messages like "User joined",
-                            "Conversation created" (default: false — only chat messages).
+                            "Conversation created" (default: false - only chat messages).
+            thread_id: Only return messages of this thread (default 0 = all messages,
+                       including thread messages). Use list_threads to find thread IDs.
 
         Returns:
             Compact text with one message per line: "[id] author: message".
@@ -222,18 +348,11 @@ def _register_read_tools(mcp: FastMCP) -> None:
         }
         if before_message_id:
             params["lastKnownMessageId"] = str(before_message_id)
-        data = await client.ocs_get(f"apps/spreed/api/v1/chat/{token}", params=params)
-
-        if not include_system:
-            data = [m for m in data if not m.get("systemMessage")]
-
-        lines = [_format_message_compact(msg) for msg in data]
-
-        if data:
-            oldest_id = min(m["id"] for m in data)
-            lines.append(f"\n--- {len(data)} messages. For older messages, call with before_message_id={oldest_id} ---")
-
-        return "\n".join(lines)
+        if thread_id:
+            params["threadId"] = str(thread_id)
+        with _thread_errors(token, thread_id):
+            data = await client.ocs_get(f"apps/spreed/api/v1/chat/{token}", params=params)
+        return _format_message_list(data, include_system, thread_id)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -389,25 +508,42 @@ def _register_write_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
-    async def send_message(token: str, message: str, reply_to: int = 0) -> str:
+    async def send_message(
+        token: str,
+        message: str,
+        reply_to: int = 0,
+        thread_id: int = 0,
+        thread_title: str = "",
+    ) -> str:
         """Send a chat message to a Talk conversation.
 
         Supports Markdown formatting. Messages can be up to 32000 characters.
         Use @mention syntax to mention users: @"user-id" or @"display name".
 
+        Threads: pass thread_title to start a new thread with this message as its
+        first message; the thread ID is that message's ID and is returned as
+        thread_id, so pass it as thread_id to keep posting into the thread.
+        An existing message cannot be turned into a thread. thread_title cannot be
+        combined with reply_to or thread_id, and thread_id cannot be combined with
+        reply_to (replying to a message inside a thread posts into that thread anyway).
+
         Args:
             token: The conversation token. Use list_conversations to find tokens.
             message: The message text to send (supports Markdown).
             reply_to: Optional message ID to reply to (default: 0 = not a reply).
+            thread_id: Optional ID of an existing thread to post into without quoting
+                       a message (default: 0). Use list_threads to find thread IDs.
+            thread_title: Optional title; when set, the message starts a new thread
+                          with this title (default: "" = no new thread).
 
         Returns:
-            JSON object of the sent message with its assigned ID.
+            JSON object of the sent message with its assigned ID, its thread_id
+            (0 when the message is not in a thread) and, for thread messages, thread_title.
         """
+        post_data = _build_message_payload(message, reply_to, thread_id, thread_title)
         client = get_client()
-        post_data: dict[str, Any] = {"message": message}
-        if reply_to:
-            post_data["replyTo"] = reply_to
-        data = await client.ocs_post(f"apps/spreed/api/v1/chat/{token}", data=post_data)
+        with _thread_errors(token, thread_id, not_found_status=400):
+            data = await client.ocs_post(f"apps/spreed/api/v1/chat/{token}", data=post_data)
         return json.dumps(_format_message_full(data), default=str)
 
     @mcp.tool(annotations=ADDITIVE)
@@ -479,8 +615,169 @@ def _register_write_tools(mcp: FastMCP) -> None:
         return f"Left conversation {token}."
 
 
+def _register_thread_read_tools(mcp: FastMCP) -> None:
+    """Register read-only Talk thread tools."""
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_threads(token: str, limit: int = 50) -> str:
+        """List the most recently active threads in a Talk conversation.
+
+        A thread is started by sending a message with a thread_title (see send_message);
+        its ID is the ID of that first message. Read a thread's messages with
+        get_messages(token, thread_id=...).
+
+        Args:
+            token: The conversation token. Use list_conversations to find tokens.
+            limit: Maximum number of threads to return (1-50, default 50). Talk only
+                   returns the most recently active threads and has no offset.
+
+        Returns:
+            JSON with "data" (list of threads, newest activity first) and "pagination"
+            (count, limit, has_more). Each thread has thread_id, token, title,
+            num_replies, last_activity (Unix timestamp), notification_level
+            (default/always/mention/never) and first/last messages as compact lines
+            "[id] author [thread <id>]: text" (last is null when there are no replies).
+        """
+        limit = max(1, min(50, limit))
+        client = get_client()
+        data = await client.ocs_get(f"apps/spreed/api/v1/chat/{token}/threads/recent", params={"limit": str(limit)})
+        threads = [_format_thread(info) for info in data]
+        return json.dumps(
+            {
+                "data": threads,
+                "pagination": {"count": len(threads), "limit": limit, "has_more": len(threads) == limit},
+            },
+            default=str,
+        )
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def get_thread(token: str, thread_id: int) -> str:
+        """Get details of one thread in a Talk conversation.
+
+        Returns the thread's summary, not its messages; use
+        get_messages(token, thread_id=...) to read the messages.
+
+        Args:
+            token: The conversation token. Use list_conversations to find tokens.
+            thread_id: The thread ID, which is the ID of the thread's first message.
+                       Shown as "[thread <id>]" in get_messages output.
+
+        Returns:
+            JSON object with thread_id, token, title, num_replies, last_activity,
+            notification_level and first/last messages as compact lines.
+        """
+        client = get_client()
+        with _thread_errors(token, thread_id):
+            data = await client.ocs_get(f"apps/spreed/api/v1/chat/{token}/threads/{thread_id}")
+        return json.dumps(_format_thread(data), default=str)
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_subscribed_threads(limit: int = 100, offset: int = 0) -> str:
+        """List the threads the current user follows, across all conversations.
+
+        A user follows the threads they start or post in, and the ones whose
+        notification level they set; threads set to "never" are left out.
+        Sorted by last activity (newest first).
+
+        Args:
+            limit: Maximum number of threads to return (1-100, default 100).
+            offset: Number of threads to skip for pagination (default 0).
+
+        Returns:
+            JSON with "data" (list of threads, same shape as list_threads; use the
+            token field to know the conversation) and "pagination"
+            (count, offset, limit, has_more).
+        """
+        limit = max(1, min(100, limit))
+        offset = max(0, offset)
+        client = get_client()
+        data = await client.ocs_get(
+            "apps/spreed/api/v1/chat/subscribed-threads",
+            params={"limit": str(limit), "offset": str(offset)},
+        )
+        threads = [_format_thread(info) for info in data]
+        return json.dumps(
+            {
+                "data": threads,
+                "pagination": {
+                    "count": len(threads),
+                    "offset": offset,
+                    "limit": limit,
+                    "has_more": len(threads) == limit,
+                },
+            },
+            default=str,
+        )
+
+
+def _register_thread_write_tools(mcp: FastMCP) -> None:
+    """Register Talk thread tools that change thread settings."""
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def rename_thread(token: str, thread_id: int, title: str) -> str:
+        """Rename a thread in a Talk conversation.
+
+        Only the author of the thread's first message or a conversation moderator
+        can rename a thread. Talk posts a "thread renamed" system message into the thread.
+
+        Args:
+            token: The conversation token. Use list_conversations to find tokens.
+            thread_id: The thread ID (the ID of the thread's first message).
+            title: The new thread title (must not be blank).
+
+        Returns:
+            JSON object of the updated thread (same shape as get_thread).
+        """
+        title = title.strip()
+        if not title:
+            raise ValueError("title must not be blank.")
+        client = get_client()
+        forbidden = (
+            f"Only the author of the first message of thread {thread_id} or a moderator of "
+            f"conversation {token} can rename the thread."
+        )
+        with _thread_errors(token, thread_id, forbidden=forbidden):
+            data = await client.ocs_put(
+                f"apps/spreed/api/v1/chat/{token}/threads/{thread_id}",
+                data={"threadTitle": title},
+            )
+        return json.dumps(_format_thread(data), default=str)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_thread_notification_level(token: str, thread_id: int, level: str) -> str:
+        """Set the current user's notification level for a thread.
+
+        Setting any level other than "never" also makes the user follow the thread,
+        so it shows up in list_subscribed_threads; "never" removes it from that list.
+
+        Args:
+            token: The conversation token. Use list_conversations to find tokens.
+            thread_id: The thread ID (the ID of the thread's first message).
+            level: One of "default" (use the conversation's setting), "always"
+                   (every message), "mention" (only when mentioned) or "never".
+
+        Returns:
+            JSON object of the updated thread (same shape as get_thread).
+        """
+        level_id = _parse_thread_notification_level(level)
+        client = get_client()
+        with _thread_errors(token, thread_id):
+            data = await client.ocs_post(
+                f"apps/spreed/api/v1/chat/{token}/threads/{thread_id}/notify",
+                data={"level": level_id},
+            )
+        return json.dumps(_format_thread(data), default=str)
+
+
 def register(mcp: FastMCP) -> None:
     """Register Talk tools with the MCP server."""
     _register_read_tools(mcp)
     _register_poll_tools(mcp)
     _register_write_tools(mcp)
+    _register_thread_read_tools(mcp)
+    _register_thread_write_tools(mcp)
