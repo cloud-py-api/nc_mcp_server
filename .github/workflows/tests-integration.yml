@@ -13,9 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NC35 GA 2026-09-16: add "35" here and in the two jobs below once nextcloud:35 is on Docker Hub,
-        # and raise after_n_builds in codecov.yml from 6 to 9.
-        nextcloud-version: ["34"]
+        nextcloud-version: ["34", "35"]
     services:
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
@@ -124,7 +122,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nextcloud-version: ["34"]
+        nextcloud-version: ["34", "35"]
     services:
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
@@ -195,7 +193,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nextcloud-version: ["34"]
+        nextcloud-version: ["34", "35"]
     services:
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}

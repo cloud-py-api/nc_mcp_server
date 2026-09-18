@@ -488,7 +488,7 @@ export NEXTCLOUD_PASSWORD=admin
 pytest tests/integration/ -v
 ```
 
-CI runs the integration tests against Nextcloud 34 using the official Docker image. Nextcloud 35 (GA 2026-09-16) joins the matrix once `nextcloud:35` is published on Docker Hub.
+CI runs the integration tests against Nextcloud 34 and 35 using the official Docker images.
 
 ## About This Project
 
