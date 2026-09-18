@@ -44,6 +44,7 @@
 - [x] Circles (Teams) tools: 14 tools — list/CRUD circles, member add/remove/level, search, join/leave (2026-04-24)
 - [x] Cospend tools: 16 tools — projects (7), members (4), bills (5) — shared expense tracking (2026-04-26)
 - [x] Mail triage tools: move_mail_message, set_mail_message_flags, create_mail_tag, add_mail_message_tag, remove_mail_message_tag via the Mail app's JSON routes; tags in message output; Mail integration tests read from Dovecot (2026-09-15)
+- [x] Talk threads: list_threads, get_thread, list_subscribed_threads, rename_thread, set_thread_notification_level; send_message starts or posts into a thread, get_messages filters by thread and marks thread messages (2026-09-18)
 
 ### In Progress
 
@@ -74,6 +75,7 @@
 | Notifications | 3 | 11 |
 | Talk | 8 | 48 |
 | Talk Polls | 4 | 32 |
+| Talk Threads | 5 | 73 |
 | Activity | 1 | 20 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
@@ -101,7 +103,7 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **162** | **960** |
+| **Total** | **167** | **1033** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 161 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 166 tools.
