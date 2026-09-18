@@ -43,6 +43,7 @@
 - [x] Forms tools: 25 tools covering forms, questions, options, shares, submissions CRUD + export (2026-04-23)
 - [x] Circles (Teams) tools: 14 tools — list/CRUD circles, member add/remove/level, search, join/leave (2026-04-24)
 - [x] Cospend tools: 16 tools — projects (7), members (4), bills (5) — shared expense tracking (2026-04-26)
+- [x] Mail triage tools: move_mail_message, set_mail_message_flags, create_mail_tag, add_mail_message_tag, remove_mail_message_tag via the Mail app's JSON routes; tags in message output; Mail integration tests read from Dovecot (2026-09-15)
 
 ### In Progress
 
@@ -81,7 +82,7 @@
 | Versions | 2 | 18 |
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
-| Mail | 5 | 29 |
+| Mail | 10 | 102 |
 | Collectives | 3 | 22 |
 | App Management | 4 | 14 |
 | Calendar | 6 | 44 |
@@ -92,7 +93,7 @@
 | Server | — | 8 |
 | Permissions | — | 34 |
 | Errors | — | 16 |
-| Client | — | 29 |
+| Client | — | 45 |
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 26 |
@@ -100,7 +101,7 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **157** | **871** |
+| **Total** | **162** | **960** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 156 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 161 tools.

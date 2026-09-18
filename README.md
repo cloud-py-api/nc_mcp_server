@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 140 Tools Across 23 Nextcloud Apps
+## 161 Tools Across 23 Nextcloud Apps
 
-A 141st tool, `upload_file_from_path`, is registered only when the operator sets
+A 162nd tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -54,7 +54,7 @@ A 141st tool, `upload_file_from_path`, is registered only when the operator sets
 | [Calendar](#calendar) | list calendars, CRUD events | CalDAV |
 | [Contacts](#contacts) | list address books, CRUD contacts | CardDAV |
 | [Tasks](#tasks) | list lists, CRUD tasks, complete | CalDAV |
-| [Mail](#mail) | accounts, mailboxes, messages, send | OCS |
+| [Mail](#mail) | accounts, mailboxes, messages, send, move, flags, tags | OCS + REST |
 | [Collectives](#collectives) | list, pages, create, trash, restore | OCS |
 | [Forms](#forms) | CRUD forms, questions, options, shares, submissions + export | OCS |
 | [Circles (Teams)](#circles-teams) | list, CRUD, members (add/remove/promote), join/leave, search | OCS |
@@ -354,6 +354,11 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `list_mail_messages` | read | List messages in a mailbox |
 | `get_mail_message` | read | Get full message content |
 | `send_mail` | write | Send an email |
+| `move_mail_message` | write | Move a message to another mailbox of the same account (its ID changes) |
+| `set_mail_message_flags` | write | Mark as read/unread, starred, answered |
+| `create_mail_tag` | write | Create a tag, or get the existing one with the same label |
+| `add_mail_message_tag` | write | Tag a message |
+| `remove_mail_message_tag` | write | Remove a tag from a message |
 
 ### Collectives
 
