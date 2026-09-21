@@ -73,9 +73,9 @@
 | Files | 10 | 77 |
 | Users | 5 | 20 |
 | Notifications | 3 | 11 |
-| Talk | 8 | 48 |
+| Talk | 8 | 49 |
 | Talk Polls | 4 | 32 |
-| Talk Threads | 5 | 73 |
+| Talk Threads | 5 | 78 |
 | Activity | 1 | 20 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
@@ -95,7 +95,7 @@
 | Server | — | 8 |
 | Permissions | — | 34 |
 | Errors | — | 16 |
-| Client | — | 45 |
+| Client | — | 47 |
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 26 |
@@ -103,7 +103,7 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **167** | **1033** |
+| **Total** | **167** | **1041** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
 `NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 166 tools.

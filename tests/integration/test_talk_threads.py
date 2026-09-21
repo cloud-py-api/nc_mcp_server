@@ -165,6 +165,26 @@ class TestGetMessagesThreads:
         assert _line_ids(second) == [reply_ids[1], reply_ids[0], root_id]
 
     @pytest.mark.asyncio
+    async def test_paging_past_the_thread_root_returns_nothing(self, nc_mcp: McpTestHelper, room: str) -> None:
+        """The pagination footer invites this call; Talk answers 304 with an empty body."""
+        root_id = await _start_thread(nc_mcp, room, "Plan")
+        assert f"before_message_id={root_id}" in await nc_mcp.call("get_messages", token=room, thread_id=root_id)
+        assert await nc_mcp.call("get_messages", token=room, thread_id=root_id, before_message_id=root_id) == ""
+
+    @pytest.mark.asyncio
+    async def test_page_of_only_system_messages_can_be_paged_past(self, nc_mcp: McpTestHelper, room: str) -> None:
+        """A rename puts a system message at the top of the thread, so a small page can hold only that."""
+        root_id = await _start_thread(nc_mcp, room, "Plan")
+        await nc_mcp.call("rename_thread", token=room, thread_id=root_id, title="Renamed")
+        page = await nc_mcp.call("get_messages", token=room, thread_id=root_id, limit=1)
+        assert _message_lines(page) == []
+        assert "--- 0 messages." in page
+        older_than = int(page.split("before_message_id=")[1].split(",")[0])
+        assert older_than > root_id
+        older = await nc_mcp.call("get_messages", token=room, thread_id=root_id, before_message_id=older_than)
+        assert _line_ids(older) == [root_id]
+
+    @pytest.mark.asyncio
     async def test_unknown_thread_filter_raises(self, nc_mcp: McpTestHelper, room: str) -> None:
         with pytest.raises(ToolError, match=f"Thread {MISSING_THREAD_ID} not found"):
             await nc_mcp.call("get_messages", token=room, thread_id=MISSING_THREAD_ID)

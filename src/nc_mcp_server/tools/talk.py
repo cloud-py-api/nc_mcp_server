@@ -161,16 +161,20 @@ def _format_thread(info: dict[str, Any]) -> dict[str, Any]:
 
 
 def _format_message_list(messages: list[dict[str, Any]], include_system: bool, thread_id: int) -> str:
-    """Render get_messages output: one compact line per message plus a pagination footer."""
-    if not include_system:
-        messages = [m for m in messages if not m.get("systemMessage")]
-    lines = [_format_message_compact(msg) for msg in messages]
+    """Render get_messages output: one compact line per message plus a pagination footer.
+
+    The footer counts the messages shown but paginates from the oldest message Talk returned,
+    hidden system messages included, so that a page of nothing but system messages can still
+    be paged past instead of looking like the end of the history.
+    """
+    shown = messages if include_system else [m for m in messages if not m.get("systemMessage")]
+    lines = [_format_message_compact(msg) for msg in shown]
     if messages:
         oldest_id = min(m["id"] for m in messages)
         next_call = f"before_message_id={oldest_id}"
         if thread_id:
             next_call += f", thread_id={thread_id}"
-        lines.append(f"\n--- {len(messages)} messages. For older messages, call with {next_call} ---")
+        lines.append(f"\n--- {len(shown)} messages. For older messages, call with {next_call} ---")
     return "\n".join(lines)
 
 
@@ -338,6 +342,8 @@ def _register_read_tools(mcp: FastMCP) -> None:
         Returns:
             Compact text with one message per line: "[id] author: message".
             The last line shows pagination info if more messages may exist.
+            Empty when nothing matches, for example when there is nothing older
+            than before_message_id.
         """
         client = get_client()
         limit = max(1, min(200, limit))
@@ -352,7 +358,8 @@ def _register_read_tools(mcp: FastMCP) -> None:
             params["threadId"] = str(thread_id)
         with _thread_errors(token, thread_id):
             data = await client.ocs_get(f"apps/spreed/api/v1/chat/{token}", params=params)
-        return _format_message_list(data, include_system, thread_id)
+        # Talk answers 304 with an empty body when nothing is older than before_message_id
+        return _format_message_list(data or [], include_system, thread_id)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -534,7 +541,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
             thread_id: Optional ID of an existing thread to post into without quoting
                        a message (default: 0). Use list_threads to find thread IDs.
             thread_title: Optional title; when set, the message starts a new thread
-                          with this title (default: "" = no new thread).
+                          with this title (default: "" = no new thread). Talk shortens
+                          titles longer than 203 characters.
 
         Returns:
             JSON object of the sent message with its assigned ID, its thread_id
@@ -727,7 +735,8 @@ def _register_thread_write_tools(mcp: FastMCP) -> None:
         Args:
             token: The conversation token. Use list_conversations to find tokens.
             thread_id: The thread ID (the ID of the thread's first message).
-            title: The new thread title (must not be blank).
+            title: The new thread title (must not be blank). Talk shortens titles
+                   longer than 203 characters.
 
         Returns:
             JSON object of the updated thread (same shape as get_thread).

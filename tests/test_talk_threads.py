@@ -133,6 +133,18 @@ class TestFormatMessageList:
     def test_empty_list(self) -> None:
         assert talk._format_message_list([], include_system=False, thread_id=23) == ""
 
+    def test_footer_paginates_from_a_hidden_system_message(self) -> None:
+        system = {**REPLY, "id": 22, "systemMessage": "thread_created", "message": "You created thread {title}"}
+        result = talk._format_message_list([REPLY, system], include_system=False, thread_id=0)
+        assert result.startswith("[25] admin [thread 23]: a reply\n")
+        assert result.endswith("--- 1 messages. For older messages, call with before_message_id=22 ---")
+
+    def test_page_of_only_system_messages_still_has_a_footer(self) -> None:
+        """Without the footer the caller cannot tell a filtered page from the end of the history."""
+        system = {**REPLY, "id": 24, "systemMessage": "thread_renamed", "message": "You renamed thread {title}"}
+        result = talk._format_message_list([system], include_system=False, thread_id=23)
+        assert result == "\n--- 0 messages. For older messages, call with before_message_id=24, thread_id=23 ---"
+
 
 class TestBuildMessagePayload:
     def test_plain_message(self) -> None:
@@ -224,6 +236,13 @@ class TestThreadToolsWithMockClient:
             "[26] admin: plain\n\n--- 1 messages. For older messages, call with before_message_id=26 ---"
         )
         assert "threadId" not in client.ocs_get.call_args.kwargs["params"]
+
+    @pytest.mark.asyncio
+    async def test_get_messages_handles_304_empty_body(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
+        """Paging past the oldest message of a thread makes Talk answer 304, which has no data."""
+        mcp, client = mcp_with_mock_client
+        client.ocs_get.return_value = None
+        assert await _call(mcp, "get_messages", token="abc123", thread_id=23, before_message_id=23) == ""
 
     @pytest.mark.asyncio
     async def test_get_thread_404_names_the_thread(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:

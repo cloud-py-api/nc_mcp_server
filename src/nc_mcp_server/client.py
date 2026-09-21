@@ -254,10 +254,17 @@ class NextcloudClient:
     # --- OCS API ---
 
     async def ocs_get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        """Make an OCS GET request and return the data portion."""
+        """Make an OCS GET request and return the data portion.
+
+        Returns None for "304 Not Modified", which Talk's chat endpoint answers with an
+        empty body when no message matches the query (for example when paging past the
+        oldest message of a conversation or of a thread).
+        """
         url = f"{self._base_url}/ocs/v2.php/{path}"
         response = await self._do_request("GET", url, params=params or {})
         _raise_for_ocs_status(response, f"OCS GET {path}")
+        if response.status_code == 304:
+            return None
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
