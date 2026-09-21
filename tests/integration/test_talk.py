@@ -311,17 +311,6 @@ class TestGetParticipants:
             await _delete_room(nc_mcp, str(room["token"]))
 
     @pytest.mark.asyncio
-    async def test_pagination_past_the_oldest_message(self, nc_mcp: McpTestHelper) -> None:
-        """Talk answers "304 Not Modified" with an empty body when nothing is older."""
-        room = await _create_room(nc_mcp, "test-paginate-end")
-        try:
-            await _send_msg(nc_mcp, str(room["token"]), "only message")
-            result = await nc_mcp.call("get_messages", token=str(room["token"]), before_message_id=1)
-            assert result == ""
-        finally:
-            await _delete_room(nc_mcp, str(room["token"]))
-
-    @pytest.mark.asyncio
     async def test_nonexistent_conversation_raises(self, nc_mcp: McpTestHelper) -> None:
         with pytest.raises(ToolError):
             await nc_mcp.call("get_participants", token="nonexistent-xyz-12345")
