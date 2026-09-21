@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 161 Tools Across 23 Nextcloud Apps
+## 166 Tools Across 23 Nextcloud Apps
 
-A 162nd tool, `upload_file_from_path`, is registered only when the operator sets
+A 167th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -48,7 +48,7 @@ A 162nd tool, `upload_file_from_path`, is registered only when the operator sets
 | [User Status](#user-status) | get, set, clear status | OCS |
 | [Notifications](#notifications) | list, dismiss one, dismiss all | OCS |
 | [Activity](#activity) | get activity feed with filtering | OCS |
-| [Talk](#talk) | conversations, messages, participants | OCS |
+| [Talk](#talk) | conversations, messages, threads, participants | OCS |
 | [Talk Polls](#talk-polls) | get, create, vote, close polls | OCS |
 | [Announcements](#announcements) | list, create, delete announcements | OCS |
 | [Calendar](#calendar) | list calendars, CRUD events | CalDAV |
@@ -287,12 +287,20 @@ call; the body is streamed in chunks rather than loaded into memory.
 |------|-----------|-------------|
 | `list_conversations` | read | List all Talk conversations |
 | `get_conversation` | read | Get conversation details |
-| `get_messages` | read | Get messages from a conversation |
+| `get_messages` | read | Get messages from a conversation, or from one thread |
 | `get_participants` | read | List participants in a conversation |
-| `send_message` | write | Send a message to a conversation |
+| `list_threads` | read | List the most recently active threads in a conversation |
+| `get_thread` | read | Get a thread's title, reply count and first/last message |
+| `list_subscribed_threads` | read | List the threads you follow across all conversations |
+| `send_message` | write | Send a message; can start a thread or post into one |
 | `create_conversation` | write | Create a new conversation |
+| `rename_thread` | write | Rename a thread |
+| `set_thread_notification_level` | write | Set your notification level for a thread |
 | `delete_message` | destructive | Delete a message |
 | `leave_conversation` | destructive | Leave a conversation |
+
+The thread tools need a Talk version that advertises the `threads` capability (Talk 24, which
+ships with Nextcloud 34, and newer). A thread ID is the message ID of the thread's first message.
 
 ### Talk Polls
 
