@@ -7,6 +7,8 @@ from typing import Any
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
+from nc_mcp_server.tools import collectives
+
 from .conftest import McpTestHelper
 
 pytestmark = pytest.mark.integration
@@ -24,6 +26,17 @@ async def _get_landing_page_id(nc_mcp: McpTestHelper, collective_id: int) -> int
     result = await nc_mcp.call("get_collective_pages", collective_id=collective_id, limit=200)
     pages = json.loads(result)["data"]
     return pages[0]["id"]
+
+
+async def _write_page(nc_mcp: McpTestHelper, collective_id: int, page_id: int, text: str) -> None:
+    """Write Markdown into a page's file, the way the Collectives editor does.
+
+    The path comes from the live page object through the same helper the tool uses, so a
+    change to how Collectives reports page locations fails these tests too.
+    """
+    data = await nc_mcp.client.ocs_get(f"apps/collectives/api/v1.0/collectives/{collective_id}/pages/{page_id}")
+    path = collectives._page_dav_path(data["page"])
+    await nc_mcp.client.dav_put(path, text.encode("utf-8"), content_type="text/markdown; charset=utf-8")
 
 
 async def _destroy_collective(nc_mcp: McpTestHelper, collective_id: int) -> None:
@@ -164,6 +177,69 @@ class TestGetCollectivePage:
         try:
             with pytest.raises(ToolError):
                 await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=999999)
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_new_page_has_empty_content(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "emptypg")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Empty"
+                )
+            )
+            result = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page["id"]))
+            assert result["content"] == ""
+            assert "content_error" not in result
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_page_content_is_returned(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "content")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            await _write_page(nc_mcp, coll["id"], landing_id, "# Landing\n\nWelcome to the team wiki.")
+            result = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=landing_id))
+            assert result["content"] == "# Landing\n\nWelcome to the team wiki."
+            assert result["size"] == len("# Landing\n\nWelcome to the team wiki.")
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_subpage_content_is_read_from_its_own_file(self, nc_mcp: McpTestHelper) -> None:
+        """A page with children turns into a folder, so parent and child must not be mixed up."""
+        coll = await _create_collective(nc_mcp, "subcontent")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            parent = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Parent"
+                )
+            )
+            child = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=parent["id"], title="Child"
+                )
+            )
+            await _write_page(nc_mcp, coll["id"], parent["id"], "parent text")
+            await _write_page(nc_mcp, coll["id"], child["id"], "child text")
+            for page_id, expected in ((parent["id"], "parent text"), (child["id"], "child text")):
+                result = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page_id))
+                assert result["content"] == expected
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_content_survives_non_ascii(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "utf8")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            await _write_page(nc_mcp, coll["id"], landing_id, "Grüße, 世界 🙂")
+            result = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=landing_id))
+            assert result["content"] == "Grüße, 世界 🙂"
         finally:
             await _destroy_collective(nc_mcp, coll["id"])
 
