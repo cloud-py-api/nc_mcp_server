@@ -4,6 +4,7 @@ import contextlib
 import json
 import re
 from collections.abc import Generator
+from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -90,6 +91,10 @@ def _format_poll(poll: dict[str, Any]) -> dict[str, Any]:
 
 def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
     """Extract the most useful fields from a raw room object."""
+    # The latest pin, unless the user hid it for themselves
+    pinned = room.get("lastPinnedId", 0)
+    if pinned and room.get("hiddenPinnedId") == pinned:
+        pinned = 0
     return {
         "token": room["token"],
         "type": _CONVERSATION_TYPES.get(room.get("type", 0), f"unknown({room.get('type')})"),
@@ -102,7 +107,11 @@ def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
         "last_activity": room.get("lastActivity", 0),
         "is_favorite": room.get("isFavorite", False),
         "is_archived": room.get("isArchived", False),
+        "is_important": room.get("isImportant", False),
+        "is_sensitive": room.get("isSensitive", False),
         "notification_level": _notification_level_name(room.get("notificationLevel", 0)),
+        "call_notifications": room.get("notificationCalls", 1) == 1,
+        "pinned_message_id": pinned,
         "participant_count": room.get("participantCount", 0),
         "can_leave": room.get("canLeaveConversation", False),
         "can_delete": room.get("canDeleteConversation", False),
@@ -300,6 +309,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
     async def list_conversations(
         limit: int = 50,
         offset: int = 0,
+        modified_since: str = "",
     ) -> str:
         """List Talk conversations the current user is part of.
 
@@ -310,6 +320,11 @@ def _register_read_tools(mcp: FastMCP) -> None:
         Args:
             limit: Maximum number of conversations to return (1-200, default 50).
             offset: Number of conversations to skip for pagination (default 0).
+            modified_since: Only conversations with activity since this ISO 8601
+                time with time zone, e.g. to check what changed since the last look.
+                Your own changes to a conversation (read state, favorite, archive,
+                notifications) count as activity, and ones with a call running are
+                always included.
 
         Returns:
             JSON with "data" (list of conversation objects) and "pagination"
@@ -320,7 +335,10 @@ def _register_read_tools(mcp: FastMCP) -> None:
         client = get_client()
         # Talk reads noStatusUpdate only to decide whether to bump the user's presence
         # to online for its mobile clients, which listing from a tool must not do.
-        data = await client.ocs_get("apps/spreed/api/v4/room", params={"noStatusUpdate": "1"})
+        params = {"noStatusUpdate": "1"}
+        if modified_since:
+            params["modifiedSince"] = str(_timestamp(modified_since, "modified_since", future=False))
+        data = await client.ocs_get("apps/spreed/api/v4/room", params=params)
         all_convs = [_format_conversation(room) for room in data]
         page = all_convs[offset : offset + limit]
         has_more = offset + limit < len(all_convs)
@@ -1096,6 +1114,238 @@ def _register_chat_destructive_tools(mcp: FastMCP) -> None:
         return json.dumps(_format_reactions(data), ensure_ascii=False)
 
 
+_ROOM_API = "apps/spreed/api/v4/room"
+
+# The endpoint behind each set_conversation_preferences argument
+_SETTING_NAMES = {
+    "favorite": "favorite",
+    "archive": "archived",
+    "important": "important",
+    "sensitive": "sensitive",
+    "notify": "notification_level",
+    "notify-calls": "call_notifications",
+}
+
+# Talk takes these for a conversation; "default" (0) is only reported, for one never changed
+_CONVERSATION_NOTIFICATION_LEVELS = {"always": 1, "mention": 2, "never": 3}
+
+
+def _timestamp(value: str, field: str, future: bool = True) -> int:
+    """Turn an ISO 8601 time with a time zone into the Unix timestamp Talk takes, by default refusing past times."""
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError as e:
+        raise ValueError(f"{field} must be an ISO 8601 time, e.g. 2026-10-01T09:00:00+02:00; got {value!r}") from e
+    if moment.tzinfo is None:
+        raise ValueError(f"{field} needs a time zone, e.g. 2026-10-01T09:00:00+02:00 or 2026-10-01T07:00:00Z")
+    if future and moment <= datetime.now(UTC):
+        raise ValueError(f"{field} must be in the future")
+    if moment.timestamp() < 0:
+        raise ValueError(f"{field} must not be before 1970")
+    return int(moment.timestamp())
+
+
+def _iso(timestamp: Any) -> str:
+    return datetime.fromtimestamp(int(timestamp), UTC).isoformat() if timestamp else ""
+
+
+def _format_reminder(reminder: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "token": reminder.get("roomToken") or reminder.get("token", ""),
+        "message_id": reminder.get("messageId", 0),
+        "remind_at": _iso(reminder.get("reminderTimestamp") or reminder.get("timestamp")),
+    }
+
+
+async def _set_flag(token: str, endpoint: str, value: bool) -> dict[str, Any]:
+    """Switch one of the per-user conversation flags that Talk sets with POST and clears with DELETE."""
+    client = get_client()
+    path = f"apps/spreed/api/v4/room/{token}/{endpoint}"
+    data = await (client.ocs_post_json(path, json_data={}) if value else client.ocs_delete(path))
+    return cast(dict[str, Any], data)
+
+
+def _register_conversation_settings_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_conversation_preferences(
+        token: str,
+        favorite: bool | None = None,
+        archived: bool | None = None,
+        important: bool | None = None,
+        sensitive: bool | None = None,
+        notification_level: str | None = None,
+        call_notifications: bool | None = None,
+    ) -> str:
+        """Change your own settings for a conversation; other participants are not affected.
+
+        Only the settings you pass change, one request each; if one fails, the error
+        names it and the settings already changed before it.
+
+        Args:
+            token: The conversation token.
+            favorite: Pin it to the top of your conversation list.
+            archived: Move it to (or out of) your archive; archived conversations
+                stay listed with is_archived true.
+            important: Notify you about it even when your status is Do not disturb.
+            sensitive: Hide message previews for it in the conversation list and
+                notifications.
+            notification_level: When to notify you about messages: "always",
+                "mention" (only when mentioned) or "never". Conversations you never
+                changed report "default", which Talk does not accept as a setting.
+            call_notifications: Whether to notify you when a call starts.
+
+        Returns:
+            JSON with the conversation afterwards, as get_conversation shows it.
+        """
+        changes: list[tuple[str, bool]] = [
+            (endpoint, value)
+            for endpoint, value in (
+                ("favorite", favorite),
+                ("archive", archived),
+                ("important", important),
+                ("sensitive", sensitive),
+            )
+            if value is not None
+        ]
+        level = None
+        if notification_level is not None:
+            level = _CONVERSATION_NOTIFICATION_LEVELS.get(notification_level.strip().lower())
+            if level is None:
+                valid = ", ".join(_CONVERSATION_NOTIFICATION_LEVELS)
+                raise ValueError(f"Invalid level '{notification_level}'. Must be one of: {valid}")
+        if not changes and level is None and call_notifications is None:
+            raise ValueError("Pass at least one setting to change.")
+        steps: list[tuple[str, str, bool | int]] = [(name, "flag", value) for name, value in changes]
+        if level is not None:
+            steps.append(("notify", "level", level))
+        if call_notifications is not None:
+            steps.append(("notify-calls", "level", int(call_notifications)))
+        client = get_client()
+        room: dict[str, Any] = {}
+        applied: list[str] = []
+        for name, kind, value in steps:
+            try:
+                if kind == "flag":
+                    room = await _set_flag(token, name, bool(value))
+                else:
+                    room = await client.ocs_post_json(f"{_ROOM_API}/{token}/{name}", json_data={"level": value})
+            except NextcloudError as e:
+                done = f" ({', '.join(_SETTING_NAMES[n] for n in applied)} already changed)" if applied else ""
+                raise NextcloudError(f"{e}. Failed at {_SETTING_NAMES[name]}{done}", e.status_code) from e
+            applied.append(name)
+        return json.dumps(_format_conversation(room), ensure_ascii=False)
+
+
+def _register_pin_and_reminder_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def pin_message(token: str, message_id: int, until: str = "") -> str:
+        """Pin a message to the top of the conversation for everyone. Needs moderator rights.
+
+        Pinned messages are listed by list_shared_items with item_type "pinned".
+
+        Args:
+            token: The conversation token.
+            message_id: The message to pin.
+            until: When the pin should expire, as an ISO 8601 time with time zone
+                (default: until someone unpins it). Talk removes expired pins on
+                its next background job run.
+
+        Returns:
+            JSON with the pinned message, or a note that it was already pinned.
+        """
+        body = {"pinUntil": _timestamp(until, "until")} if until else {}
+        data = await get_client().ocs_post_json(_chat_path(token, message_id, "pin"), json_data=body)
+        if not data:
+            # Talk answers an already pinned message with an empty 200 and keeps its expiry
+            return f"Message {message_id} was already pinned; to change when the pin expires, unpin it first."
+        return json.dumps(_format_message_full(data.get("parent") or data), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_message_reminder(token: str, message_id: int, remind_at: str) -> str:
+        """Have Talk remind you about a message later with a notification. Replaces an earlier reminder.
+
+        Args:
+            token: The conversation token.
+            message_id: The message to be reminded about.
+            remind_at: When, as an ISO 8601 time with time zone, e.g.
+                "2026-10-01T09:00:00+02:00". Must be in the future.
+
+        Returns:
+            JSON with token, message_id and remind_at (UTC).
+        """
+        body = {"timestamp": _timestamp(remind_at, "remind_at")}
+        data = await get_client().ocs_post_json(_chat_path(token, message_id, "reminder"), json_data=body)
+        return json.dumps(_format_reminder(data))
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_message_reminders() -> str:
+        """List your upcoming message reminders, soonest first.
+
+        Talk returns at most the next 10, including ones already due but not yet
+        sent, and leaves out federated conversations. In conversations you marked
+        sensitive the message text is left empty.
+
+        Returns:
+            JSON list of reminders with token, message_id, remind_at (UTC) and the
+            message as a compact line ("[id] author: text").
+        """
+        data = await get_client().ocs_get("apps/spreed/api/v1/chat/upcoming-reminders")
+        reminders = sorted(data or [], key=lambda r: int(r.get("reminderTimestamp", 0)))
+        return json.dumps(
+            [
+                {
+                    **_format_reminder(r),
+                    "message": _format_message_compact({**r, "id": r.get("messageId", 0)}),
+                }
+                for r in reminders
+            ],
+            ensure_ascii=False,
+        )
+
+
+def _register_pin_and_reminder_destructive_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def unpin_message(token: str, message_id: int, for_everyone: bool = True) -> str:
+        """Unpin a message, for everyone (needs moderator rights) or only from your own view.
+
+        Args:
+            token: The conversation token.
+            message_id: The pinned message.
+            for_everyone: True (default) removes the pin for all participants; false
+                only hides it for you. Talk remembers one hidden pin per
+                conversation, so hiding another shows this one again.
+
+        Returns:
+            Confirmation message.
+        """
+        if not for_everyone:
+            await get_client().ocs_delete(_chat_path(token, message_id, "pin", "self"))
+            return f"Pinned message {message_id} hidden for you."
+        data = await get_client().ocs_delete(_chat_path(token, message_id, "pin"))
+        # Talk answers an empty 200 when the message was not pinned
+        return f"Message {message_id} unpinned." if data else f"Message {message_id} was not pinned."
+
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def remove_message_reminder(token: str, message_id: int) -> str:
+        """Cancel your reminder about a message.
+
+        Args:
+            token: The conversation token.
+            message_id: The message the reminder is for.
+
+        Returns:
+            Confirmation message.
+        """
+        await get_client().ocs_delete(_chat_path(token, message_id, "reminder"))
+        return f"Reminder for message {message_id} removed."
+
+
 def register(mcp: FastMCP) -> None:
     """Register Talk tools with the MCP server."""
     _register_read_tools(mcp)
@@ -1106,3 +1356,6 @@ def register(mcp: FastMCP) -> None:
     _register_chat_read_tools(mcp)
     _register_chat_write_tools(mcp)
     _register_chat_destructive_tools(mcp)
+    _register_conversation_settings_tools(mcp)
+    _register_pin_and_reminder_tools(mcp)
+    _register_pin_and_reminder_destructive_tools(mcp)

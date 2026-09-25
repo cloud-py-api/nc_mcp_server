@@ -48,6 +48,7 @@
 - [x] User admin tools: update_user (Nextcloud 34's multi-field PATCH, with a per-key fallback for a regular user's own account), set_user_enabled; Groups tools: list_groups, list_group_members, create_group, delete_group (2026-09-25)
 - [x] Flow tools: list_flows, get_flow_options (from the settings page's initial state), create_flow, update_flow, delete_flow for user and global scope (2026-09-25)
 - [x] Talk chat actions: edit_message, add_reaction, remove_reaction, get_reactions, mark_conversation_read, mark_conversation_unread, get_message_context, list_shared_items, search_mentions; message text shows mentions and shared objects instead of Talk's placeholders (2026-09-25)
+- [x] Talk conversation settings, pins and reminders: set_conversation_preferences, pin_message, unpin_message, set_message_reminder, list_message_reminders, remove_message_reminder; list_conversations takes modified_since and reports important/sensitive/call-notification/pin state (2026-09-25)
 
 ### In Progress
 
@@ -81,6 +82,7 @@
 | Talk Polls | 4 | 32 |
 | Talk Threads | 5 | 78 |
 | Talk Chat | 9 | 58 |
+| Talk Settings | 6 | 41 |
 | Activity | 1 | 20 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
@@ -109,7 +111,7 @@
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **187** | **1375** |
+| **Total** | **193** | **1416** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 186 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 192 tools.
