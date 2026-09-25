@@ -429,6 +429,16 @@ class NextcloudClient:
             return None
         return response.json()
 
+    async def web_page(self, path: str) -> str:
+        """GET a page of the web interface under /index.php/ and return its HTML.
+
+        For data Nextcloud only hands to its own pages as initial state, with no API to read it from.
+        """
+        url = f"{self._base_url}/index.php/{path.lstrip('/')}"
+        response = await self._do_request("GET", url)
+        _raise_for_status(response, f"GET {path}")
+        return response.text or ""
+
     # --- WebDAV ---
 
     @property

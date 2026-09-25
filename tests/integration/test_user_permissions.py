@@ -193,3 +193,26 @@ class TestAdminOnlyToolsReturnErrors:
     async def test_delete_group_forbidden(self, user_mcp: McpTestHelper) -> None:
         with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("delete_group", group_id="admin")
+
+
+class TestFlowsAsRegularUser:
+    @pytest.mark.asyncio
+    async def test_own_flows_and_options(self, user_mcp: McpTestHelper) -> None:
+        assert isinstance(json.loads(await user_mcp.call("list_flows"))["data"], list)
+        options = json.loads(await user_mcp.call("get_flow_options"))
+        assert "OCA\\Talk\\Flow\\Operation" in [op["class"] for op in options["operations"]]
+
+    @pytest.mark.asyncio
+    async def test_global_flows_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden|Not found"):
+            await user_mcp.call("list_flows", scope="global")
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden|Not found"):
+            await user_mcp.call("get_flow_options", scope="global")
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden|Not found"):
+            await user_mcp.call(
+                "create_flow",
+                name="mcp-test-flow",
+                operation_class="OCA\\Files_Versions\\BlockVersioningOperation",
+                scope="global",
+                checks=[{"class": "OCA\\WorkflowEngine\\Check\\FileName", "operator": "is", "value": "x"}],
+            )

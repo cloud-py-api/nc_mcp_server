@@ -17,6 +17,7 @@ from .tools import (
     contacts,
     cospend,
     files,
+    flows,
     forms,
     groups,
     mail,
@@ -69,6 +70,7 @@ def create_server(config: Config | None = None) -> FastMCP:
     contacts.register(mcp)
     cospend.register(mcp)
     files.register(mcp)
+    flows.register(mcp)
     forms.register(mcp)
     groups.register(mcp)
     mail.register(mcp)
