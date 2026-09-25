@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 203 Tools Across 24 Nextcloud Apps
+## 207 Tools Across 24 Nextcloud Apps
 
-A 204th tool, `upload_file_from_path`, is registered only when the operator sets
+A 208th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -56,7 +56,7 @@ A 204th tool, `upload_file_from_path`, is registered only when the operator sets
 | [Contacts](#contacts) | list address books, CRUD contacts | CardDAV |
 | [Tasks](#tasks) | list lists, CRUD tasks, complete | CalDAV |
 | [Mail](#mail) | accounts, mailboxes, messages, send, move, flags, tags | OCS + REST |
-| [Collectives](#collectives) | list, pages, create, trash, restore | OCS |
+| [Collectives](#collectives) | list, pages, create, edit, move and copy, search, trash, restore | OCS |
 | [Forms](#forms) | CRUD forms, questions, options, shares, submissions + export | OCS |
 | [Circles (Teams)](#circles-teams) | list, CRUD, members (add/remove/promote), join/leave, search | OCS |
 | [Cospend](#cospend) | shared expense tracking — projects, members, bills | OCS |
@@ -428,10 +428,14 @@ instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 | `list_collectives` | read | List all collectives |
 | `get_collective_pages` | read | List pages in a collective |
 | `get_collective_page` | read | Get a page's content |
+| `search_collective_pages` | read | Search the text of a collective's pages |
+| `list_recent_collective_pages` | read | List the most recently changed pages across collectives |
 | `create_collective` | write | Create a new collective |
-| `create_collective_page` | write | Create a page in a collective |
+| `create_collective_page` | write | Create a page in a collective, optionally with its text |
+| `update_collective_page` | write | Change a page's text, title or emoji |
+| `move_collective_page` | write | Move or copy a page under another page, also into another collective |
 | `trash_collective` | destructive | Move a collective to trash |
-| `delete_collective` | destructive | Permanently delete a trashed collective |
+| `delete_collective` | destructive | Permanently delete a trashed collective, optionally with its team |
 | `trash_collective_page` | destructive | Move a page to trash |
 | `delete_collective_page` | destructive | Permanently delete a trashed page |
 | `restore_collective` | write | Restore a collective from trash |

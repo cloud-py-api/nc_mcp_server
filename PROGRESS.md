@@ -51,6 +51,7 @@
 - [x] Talk conversation settings, pins and reminders: set_conversation_preferences, pin_message, unpin_message, set_message_reminder, list_message_reminders, remove_message_reminder; list_conversations takes modified_since and reports important/sensitive/call-notification/pin state (2026-09-25)
 - [x] Talk conversation management: update_conversation, add_participant, set_participant_role (owner on Talk 25), remove_participant, delete_conversation; create_conversation makes one-to-one conversations too (2026-09-25)
 - [x] Talk tags, presets and preserve: list_conversation_tags, create/rename/delete_conversation_tag, set_conversation_tags, list_conversation_presets; create_conversation takes a preset and description, update_conversation preserves conversations on Talk 25 (2026-09-25)
+- [x] Collectives page editing: update_collective_page (text, title, emoji), move_collective_page (also copy and to another collective), search_collective_pages, list_recent_collective_pages; create_collective_page takes content, delete_collective can delete the team (2026-09-25)
 
 ### In Progress
 
@@ -96,7 +97,7 @@
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
 | Mail | 10 | 102 |
-| Collectives | 11 | 37 |
+| Collectives | 15 | 61 |
 | App Management | 4 | 14 |
 | Calendar | 6 | 44 |
 | Contacts | 6 | 36 |
@@ -115,7 +116,7 @@
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **204** | **1497** |
+| **Total** | **208** | **1521** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 203 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 207 tools.
