@@ -47,6 +47,7 @@
 - [x] Talk threads: list_threads, get_thread, list_subscribed_threads, rename_thread, set_thread_notification_level; send_message starts or posts into a thread, get_messages filters by thread and marks thread messages (2026-09-18)
 - [x] User admin tools: update_user (Nextcloud 34's multi-field PATCH, with a per-key fallback for a regular user's own account), set_user_enabled; Groups tools: list_groups, list_group_members, create_group, delete_group (2026-09-25)
 - [x] Flow tools: list_flows, get_flow_options (from the settings page's initial state), create_flow, update_flow, delete_flow for user and global scope (2026-09-25)
+- [x] Talk chat actions: edit_message, add_reaction, remove_reaction, get_reactions, mark_conversation_read, mark_conversation_unread, get_message_context, list_shared_items, search_mentions; message text shows mentions and shared objects instead of Talk's placeholders (2026-09-25)
 
 ### In Progress
 
@@ -79,6 +80,7 @@
 | Talk | 8 | 57 |
 | Talk Polls | 4 | 32 |
 | Talk Threads | 5 | 78 |
+| Talk Chat | 9 | 58 |
 | Activity | 1 | 20 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
@@ -97,7 +99,7 @@
 | User Permissions | — | 25 |
 | Server | — | 8 |
 | Permissions | — | 34 |
-| Errors | — | 25 |
+| Errors | — | 31 |
 | Client | — | 63 |
 | Config | — | 24 |
 | State | — | 2 |
@@ -107,7 +109,7 @@
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **178** | **1311** |
+| **Total** | **187** | **1375** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 177 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 186 tools.

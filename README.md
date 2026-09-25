@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 177 Tools Across 24 Nextcloud Apps
+## 186 Tools Across 24 Nextcloud Apps
 
-A 178th tool, `upload_file_from_path`, is registered only when the operator sets
+A 187th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -49,7 +49,7 @@ A 178th tool, `upload_file_from_path`, is registered only when the operator sets
 | [User Status](#user-status) | get, set, clear status | OCS |
 | [Notifications](#notifications) | list, dismiss one, dismiss all | OCS |
 | [Activity](#activity) | get activity feed with filtering | OCS |
-| [Talk](#talk) | conversations, messages, threads, participants | OCS |
+| [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items | OCS |
 | [Talk Polls](#talk-polls) | get, create, vote, close polls | OCS |
 | [Announcements](#announcements) | list, create, delete announcements | OCS |
 | [Calendar](#calendar) | list calendars, CRUD events | CalDAV |
@@ -315,16 +315,28 @@ level, as does disabling an account with `set_user_enabled`.
 | `list_threads` | read | List the most recently active threads in a conversation |
 | `get_thread` | read | Get a thread's title, reply count and first/last message |
 | `list_subscribed_threads` | read | List the threads you follow across all conversations |
+| `get_message_context` | read | Get the messages before and after one message |
+| `get_reactions` | read | List who reacted to a message, and with what |
+| `list_shared_items` | read | List files, media, polls, locations and more shared in a conversation |
+| `search_mentions` | read | Find who can be mentioned, with the text to put in a message |
 | `send_message` | write | Send a message; can start a thread or post into one |
 | `create_conversation` | write | Create a new conversation |
 | `rename_thread` | write | Rename a thread |
 | `set_thread_notification_level` | write | Set your notification level for a thread |
+| `edit_message` | write | Edit a message (own ones, or any as a moderator of a group conversation; within 24 hours) |
+| `add_reaction` | write | React to a message with an emoji |
+| `mark_conversation_read` | write | Mark a conversation read, fully or up to a message |
+| `mark_conversation_unread` | write | Mark the last message unread again |
 | `delete_message` | destructive | Delete a message |
 | `leave_conversation` | destructive | Leave a conversation |
+| `remove_reaction` | destructive | Take back your reaction to a message |
 
 The thread tools need a Talk version that advertises the `threads` capability (Talk 22, which
 ships with Nextcloud 32, and newer), so every Nextcloud release supported here has them.
 A thread ID is the message ID of the thread's first message.
+
+Messages read back with their mentions and shared objects filled in ("@Jane Doe", "report.pdf")
+instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 
 ### Talk Polls
 
