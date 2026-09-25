@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 172 Tools Across 23 Nextcloud Apps
+## 177 Tools Across 24 Nextcloud Apps
 
-A 173rd tool, `upload_file_from_path`, is registered only when the operator sets
+A 178th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -62,6 +62,7 @@ A 173rd tool, `upload_file_from_path`, is registered only when the operator sets
 | [Cospend](#cospend) | shared expense tracking — projects, members, bills | OCS |
 | [Unified Search](#unified-search) | list providers, search across apps | OCS |
 | [App Management](#app-management) | list, info, enable, disable apps | OCS |
+| [Flow](#flow) | list, create, update, delete automation rules; list what they can be built from | OCS |
 
 ## Security: Permission Model
 
@@ -494,6 +495,22 @@ Shared expense tracking ("who paid for what"). Requires the [Cospend](https://ap
 | `get_app_info` | read | Get detailed app information |
 | `enable_app` | write | Enable an app (admin only) |
 | `disable_app` | destructive | Disable an app (admin only) |
+
+### Flow
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `list_flows` | read | List Flow rules of the user or (admin) global scope |
+| `get_flow_options` | read | List the operations, entities, events and checks a rule can use, with operators and value formats for the built-in checks |
+| `create_flow` | write | Create a rule; global rules need `destructive` |
+| `update_flow` | write | Change a rule's name, checks, settings or events; global rules need `destructive` |
+| `delete_flow` | destructive | Delete a rule |
+
+The available operations depend on the installed apps (Talk adds "Write to conversation", for example), and
+Nextcloud has no API that lists them, so `get_flow_options` reads them from the Flow settings page. Global
+rules act on every user's files, which is why they need the `destructive` level. Rules that would run a command
+or command-line arguments of the agent's choosing on the server (the workflow_script app's operation, or
+workflow_ocr with custom ocrmypdf arguments) are refused at any level.
 
 ## Development
 

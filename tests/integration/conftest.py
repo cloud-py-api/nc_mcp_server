@@ -4,6 +4,7 @@ import contextlib
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import pytest
@@ -227,6 +228,20 @@ async def _cleanup_cospend(client: NextcloudClient) -> None:
             if project_id.startswith("mcp-test"):
                 with contextlib.suppress(Exception):
                     await client.ocs_delete(f"apps/cospend/api/v1/projects/{quote(project_id, safe='')}")
+
+
+async def cleanup_flows(client: NextcloudClient) -> None:
+    """Delete Flow rules whose name starts with mcp-test; a stray global one would act on later tests' files."""
+    for scope in ("user", "global"):
+        with contextlib.suppress(Exception):
+            grouped: dict[str, list[dict[str, Any]]] | list[Any] = await client.ocs_get(
+                f"apps/workflowengine/api/v1/workflows/{scope}"
+            )
+            flows = [flow for group in grouped.values() for flow in group] if isinstance(grouped, dict) else []
+            for flow in flows:
+                if str(flow.get("name", "")).startswith("mcp-test"):
+                    with contextlib.suppress(Exception):
+                        await client.ocs_delete(f"apps/workflowengine/api/v1/workflows/{scope}/{flow['id']}")
 
 
 async def _cleanup(client: NextcloudClient) -> None:

@@ -46,6 +46,7 @@
 - [x] Mail triage tools: move_mail_message, set_mail_message_flags, create_mail_tag, add_mail_message_tag, remove_mail_message_tag via the Mail app's JSON routes; tags in message output; Mail integration tests read from Dovecot (2026-09-15)
 - [x] Talk threads: list_threads, get_thread, list_subscribed_threads, rename_thread, set_thread_notification_level; send_message starts or posts into a thread, get_messages filters by thread and marks thread messages (2026-09-18)
 - [x] User admin tools: update_user (Nextcloud 34's multi-field PATCH, with a per-key fallback for a regular user's own account), set_user_enabled; Groups tools: list_groups, list_group_members, create_group, delete_group (2026-09-25)
+- [x] Flow tools: list_flows, get_flow_options (from the settings page's initial state), create_flow, update_flow, delete_flow for user and global scope (2026-09-25)
 
 ### In Progress
 
@@ -93,7 +94,7 @@
 | Contacts | 6 | 36 |
 | Tasks | 7 | 48 |
 | Search | 2 | 17 |
-| User Permissions | — | 23 |
+| User Permissions | — | 25 |
 | Server | — | 8 |
 | Permissions | — | 34 |
 | Errors | — | 25 |
@@ -105,7 +106,8 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **173** | **1251** |
+| Flow | 5 | 58 |
+| **Total** | **178** | **1311** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 172 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 177 tools.
