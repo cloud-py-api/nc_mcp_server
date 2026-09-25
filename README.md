@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 207 Tools Across 24 Nextcloud Apps
+## 217 Tools Across 24 Nextcloud Apps
 
-A 208th tool, `upload_file_from_path`, is registered only when the operator sets
+A 218th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -56,7 +56,7 @@ A 208th tool, `upload_file_from_path`, is registered only when the operator sets
 | [Contacts](#contacts) | list address books, CRUD contacts | CardDAV |
 | [Tasks](#tasks) | list lists, CRUD tasks, complete | CalDAV |
 | [Mail](#mail) | accounts, mailboxes, messages, send, move, flags, tags | OCS + REST |
-| [Collectives](#collectives) | list, pages, create, edit, move and copy, search, trash, restore | OCS |
+| [Collectives](#collectives) | list, pages, create, edit, move and copy, search, tags, attachments, public links, trash, restore | OCS |
 | [Forms](#forms) | CRUD forms, questions, options, shares, submissions + export | OCS |
 | [Circles (Teams)](#circles-teams) | list, CRUD, members (add/remove/promote), join/leave, search | OCS |
 | [Cospend](#cospend) | shared expense tracking — projects, members, bills | OCS |
@@ -430,14 +430,24 @@ instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 | `get_collective_page` | read | Get a page's content |
 | `search_collective_pages` | read | Search the text of a collective's pages |
 | `list_recent_collective_pages` | read | List the most recently changed pages across collectives |
+| `list_collective_tags` | read | List a collective's page tags |
+| `list_collective_page_attachments` | read | List the files attached to a page |
+| `list_collective_shares` | read | List your public links to a collective and its pages |
 | `create_collective` | write | Create a new collective |
 | `create_collective_page` | write | Create a page in a collective, optionally with its text |
 | `update_collective_page` | write | Change a page's text, title or emoji |
 | `move_collective_page` | write | Move or copy a page under another page, also into another collective |
+| `create_collective_tag` | write | Create a page tag |
+| `update_collective_tag` | write | Rename a tag or change its color |
+| `set_collective_page_tags` | write | Set which tags a page has |
+| `share_collective` | write | Create a public link to a collective or one page, optionally editable and with a password |
+| `update_collective_share` | write | Change a public link's editing and password |
 | `trash_collective` | destructive | Move a collective to trash |
 | `delete_collective` | destructive | Permanently delete a trashed collective, optionally with its team |
 | `trash_collective_page` | destructive | Move a page to trash |
 | `delete_collective_page` | destructive | Permanently delete a trashed page |
+| `delete_collective_tag` | destructive | Delete a tag, taking it off its pages |
+| `delete_collective_share` | destructive | Remove a public link |
 | `restore_collective` | write | Restore a collective from trash |
 | `restore_collective_page` | write | Restore a page from trash |
 

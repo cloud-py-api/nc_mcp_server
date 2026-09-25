@@ -4,6 +4,7 @@ import contextlib
 import json
 from typing import Any
 
+import niquests
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
@@ -675,6 +676,168 @@ class TestSearchPages:
             assert match["collective_id"] == coll["id"]
             only = json.loads(await nc_mcp.call("list_recent_collective_pages", query="Fresh", limit=100))
             assert page["id"] in [p["id"] for p in only]
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+
+class TestCollectiveTags:
+    @pytest.mark.asyncio
+    async def test_tags_and_page_tags(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "tags")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            urgent = json.loads(await nc_mcp.call("create_collective_tag", collective_id=coll["id"], name="urgent"))
+            later = json.loads(
+                await nc_mcp.call("create_collective_tag", collective_id=coll["id"], name="later", color="#00aa00")
+            )
+            assert (urgent["color"], later["color"]) == ("0082C9", "00AA00")
+            listed = json.loads(await nc_mcp.call("list_collective_tags", collective_id=coll["id"]))
+            assert sorted(t["name"] for t in listed) == ["later", "urgent"]
+
+            tagged = json.loads(
+                await nc_mcp.call(
+                    "set_collective_page_tags",
+                    collective_id=coll["id"],
+                    page_id=landing_id,
+                    tag_ids=[urgent["id"], later["id"]],
+                )
+            )
+            assert sorted(tagged["tags"]) == sorted([urgent["id"], later["id"]])
+            narrowed = json.loads(
+                await nc_mcp.call(
+                    "set_collective_page_tags", collective_id=coll["id"], page_id=landing_id, tag_ids=[later["id"]]
+                )
+            )
+            assert narrowed["tags"] == [later["id"]]
+
+            renamed = json.loads(
+                await nc_mcp.call("update_collective_tag", collective_id=coll["id"], tag_id=later["id"], name="someday")
+            )
+            assert (renamed["name"], renamed["color"]) == ("someday", "00AA00")
+
+            await nc_mcp.call("delete_collective_tag", collective_id=coll["id"], tag_id=later["id"])
+            page = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=landing_id))
+            assert page["tags"] == []
+
+            with pytest.raises(ToolError, match=f"No tag with ID {later['id']}"):
+                await nc_mcp.call(
+                    "set_collective_page_tags", collective_id=coll["id"], page_id=landing_id, tag_ids=[later["id"]]
+                )
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_lingering_id_of_a_tag_deleted_elsewhere(self, nc_mcp: McpTestHelper) -> None:
+        """Deleting a tag in the web UI leaves its ID on pages, which Collectives will not remove by itself."""
+        coll = await _create_collective(nc_mcp, "linger")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            gone = json.loads(await nc_mcp.call("create_collective_tag", collective_id=coll["id"], name="gone"))
+            kept = json.loads(await nc_mcp.call("create_collective_tag", collective_id=coll["id"], name="kept"))
+            await nc_mcp.call(
+                "set_collective_page_tags",
+                collective_id=coll["id"],
+                page_id=landing_id,
+                tag_ids=[gone["id"], kept["id"]],
+            )
+            await nc_mcp.client.ocs_delete(f"apps/collectives/api/v1.0/collectives/{coll['id']}/tags/{gone['id']}")
+            cleared = json.loads(
+                await nc_mcp.call("set_collective_page_tags", collective_id=coll["id"], page_id=landing_id, tag_ids=[])
+            )
+            assert cleared["tags"] == []
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_invalid_input(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "badtags")
+        try:
+            with pytest.raises(ToolError, match="Invalid color"):
+                await nc_mcp.call("create_collective_tag", collective_id=coll["id"], name="x", color="red")
+            with pytest.raises(ToolError, match="No tag with ID 999999"):
+                await nc_mcp.call("update_collective_tag", collective_id=coll["id"], tag_id=999999, name="x")
+            with pytest.raises(ToolError, match="Pass name, color or both"):
+                await nc_mcp.call("update_collective_tag", collective_id=coll["id"], tag_id=1)
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+
+class TestCollectiveAttachments:
+    @pytest.mark.asyncio
+    async def test_listed_and_readable(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "attach")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call("create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Doc")
+            )
+            assert (
+                json.loads(
+                    await nc_mcp.call("list_collective_page_attachments", collective_id=coll["id"], page_id=page["id"])
+                )
+                == []
+            )
+            raw = await nc_mcp.client.ocs_get(f"apps/collectives/api/v1.0/collectives/{coll['id']}/pages/{page['id']}")
+            folder = "/".join([*collectives._page_dav_path(raw["page"]).split("/")[:-1], f".attachments.{page['id']}"])
+            await nc_mcp.client.dav_mkcol(folder)
+            await nc_mcp.client.dav_put(f"{folder}/notes.txt", b"attached", content_type="text/plain")
+            attachments = json.loads(
+                await nc_mcp.call("list_collective_page_attachments", collective_id=coll["id"], page_id=page["id"])
+            )
+            assert [(a["name"], a["size"], a["mimetype"]) for a in attachments] == [("notes.txt", 8, "text/plain")]
+            assert await nc_mcp.call("get_file", path=attachments[0]["path"]) == "attached"
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+
+class TestCollectiveShares:
+    @pytest.mark.asyncio
+    async def test_collective_and_page_links(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "share")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            whole = json.loads(await nc_mcp.call("share_collective", collective_id=coll["id"]))
+            assert (whole["page_id"], whole["editable"], whole["has_password"]) == (None, False, False)
+            assert whole["url"].endswith(f"/index.php/apps/collectives/p/{whole['token']}")
+            public_api = (
+                f"{nc_mcp.client._base_url}/ocs/v2.php/apps/collectives/api/v1.0/p/collectives/{whole['token']}"
+            )
+            headers = {"OCS-APIRequest": "true", "Accept": "application/json"}
+            async with niquests.AsyncSession() as anonymous:
+                response = await anonymous.get(public_api, headers=headers)
+                assert response.status_code == 200
+                assert response.json()["ocs"]["data"]["collectives"][0]["name"] == coll["name"]
+            page_link = json.loads(
+                await nc_mcp.call(
+                    "share_collective",
+                    collective_id=coll["id"],
+                    page_id=landing_id,
+                    editable=True,
+                    password="Mcp-Link-9!",
+                )
+            )
+            assert (page_link["page_id"], page_link["editable"], page_link["has_password"]) == (landing_id, True, True)
+            listed = json.loads(await nc_mcp.call("list_collective_shares", collective_id=coll["id"]))
+            assert sorted(s["token"] for s in listed) == sorted([whole["token"], page_link["token"]])
+
+            changed = json.loads(
+                await nc_mcp.call(
+                    "update_collective_share",
+                    collective_id=coll["id"],
+                    token=page_link["token"],
+                    editable=False,
+                    password="",
+                )
+            )
+            assert (changed["editable"], changed["has_password"]) == (False, False)
+
+            await nc_mcp.call("delete_collective_share", collective_id=coll["id"], token=whole["token"])
+            left = json.loads(await nc_mcp.call("list_collective_shares", collective_id=coll["id"]))
+            assert [s["token"] for s in left] == [page_link["token"]]  # the page link outlives the collective link
+            await nc_mcp.call("delete_collective_share", collective_id=coll["id"], token=page_link["token"])
+            assert json.loads(await nc_mcp.call("list_collective_shares", collective_id=coll["id"])) == []
+            async with niquests.AsyncSession() as anonymous:
+                assert (await anonymous.get(public_api, headers=headers)).status_code == 404
         finally:
             await _destroy_collective(nc_mcp, coll["id"])
 
