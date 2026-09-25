@@ -2,8 +2,10 @@
 
 import contextlib
 import json
+import re
 from collections.abc import Generator
-from typing import Any
+from typing import Any, cast
+from urllib.parse import quote
 
 from mcp.server.fastmcp import FastMCP
 
@@ -107,6 +109,42 @@ def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_-]+)\}")
+
+
+def _message_text(msg: dict[str, Any]) -> str:
+    """Fill in the placeholders Talk leaves in message text, such as {mention-user1} or {file}.
+
+    Talk sends mentions, shared files and other objects as placeholders plus a messageParameters map.
+    Mentions become "@name" ("@all" for the whole conversation), other objects their name, and a file
+    shared with a caption gets its name after the caption. A placeholder without a parameter stays.
+    """
+    text = str(msg.get("message", ""))
+    params = msg.get("messageParameters")
+    if not isinstance(params, dict) or not params:  # Talk sends [] when there are none
+        return text
+    parameters = cast(dict[str, Any], params)
+
+    def render(match: re.Match[str]) -> str:
+        param = parameters.get(match.group(1))
+        if not isinstance(param, dict):
+            return match.group(0)
+        fields = cast(dict[str, Any], param)
+        if not match.group(1).startswith("mention-"):
+            return str(fields.get("name") or fields.get("id") or match.group(0))
+        # A mention of the whole conversation carries the conversation's name; it is written @all
+        if fields.get("type") == "call":
+            return "@all"
+        return f"@{fields.get('name') or fields.get('id') or match.group(0)}"
+
+    rendered = _PLACEHOLDER.sub(render, text)
+    shared = parameters.get("file")
+    if "{file}" not in text and isinstance(shared, dict) and cast(dict[str, Any], shared).get("name"):
+        # A file shared with a caption: Talk puts the caption in place of the {file} placeholder
+        rendered += f" [{cast(dict[str, Any], shared)['name']}]"
+    return rendered
+
+
 def _format_message_compact(msg: dict[str, Any]) -> str:
     """Format a message as a compact single line: [id] author: text.
 
@@ -115,7 +153,7 @@ def _format_message_compact(msg: dict[str, Any]) -> str:
     """
     msg_id = msg.get("id", 0)
     author = msg.get("actorDisplayName", "unknown")
-    text = msg.get("message", "")
+    text = _message_text(msg)
     if not msg.get("isThread"):
         return f"[{msg_id}] {author}: {text}"
     thread_id = msg.get("threadId", msg_id)
@@ -137,7 +175,7 @@ def _format_message_full(msg: dict[str, Any]) -> dict[str, Any]:
         "actor_id": msg.get("actorId", ""),
         "actor_display_name": msg.get("actorDisplayName", ""),
         "timestamp": msg.get("timestamp", 0),
-        "message": msg.get("message", ""),
+        "message": _message_text(msg),
         "message_type": msg.get("messageType", ""),
         "system_message": msg.get("systemMessage", ""),
         "is_replyable": msg.get("isReplyable", False),
@@ -225,8 +263,8 @@ def _parse_thread_notification_level(level: str) -> int:
 def _thread_errors(token: str, thread_id: int, not_found_status: int = 404, forbidden: str = "") -> Generator[None]:
     """Replace the generic errors of a thread request with ones that name the thread.
 
-    Talk answers an unknown thread with an empty OCS message, which the client reports as
-    "Not found." (or "HTTP 400" when sending into one), so the caller could not tell what was wrong.
+    Talk answers an unknown thread with an empty OCS message and just a code, which the client reports
+    as "Not found. (thread)" (or a 400 when sending into one), too terse for the caller to act on.
     """
     try:
         yield
@@ -356,6 +394,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
             "lookIntoFuture": "0",
             "limit": str(limit),
             "setReadMarker": "0",
+            "markNotificationsAsRead": "0",
         }
         if before_message_id:
             params["lastKnownMessageId"] = str(before_message_id)
@@ -788,6 +827,275 @@ def _register_thread_write_tools(mcp: FastMCP) -> None:
         return json.dumps(_format_thread(data), default=str)
 
 
+# What the edit endpoint's error codes mean, in words an agent can act on
+_EDIT_ERRORS = {
+    "age": "Talk only lets messages be edited for 24 hours (except in Note to self)",
+    "permission": "only your own messages can be edited, or any message by a moderator of a group conversation",
+}
+# Answers that come without a code: from Talk's middleware, or with a code shared by several cases
+_EDIT_STATUS_ERRORS = {
+    400: "the new text is empty or invalid",
+    403: "the conversation may be read-only, or you may lack chat permission",
+    405: "system messages and shared objects other than files (polls, locations, ...) cannot be edited",
+    412: "the conversation's lobby is active",
+    413: "the new text is too long",
+}
+_ERROR_CODE = re.compile(r"\((\w+)\)$")
+
+_SHARED_ITEM_TYPES = ("audio", "deckcard", "file", "location", "media", "other", "pinned", "poll", "recording", "voice")
+
+
+def _chat_path(token: str, *parts: int | str) -> str:
+    return "/".join(["apps/spreed/api/v1/chat", token, *(str(p) for p in parts)])
+
+
+def _format_reactions(data: Any) -> dict[str, list[str]]:
+    """Reaction -> display names of who reacted with it. Talk sends [] when there are none."""
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(reaction): [str(actor.get("actorDisplayName") or actor.get("actorId", "")) for actor in actors]
+        for reaction, actors in cast(dict[str, list[dict[str, Any]]], data).items()
+    }
+
+
+def _format_unread(room: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "token": room.get("token", ""),
+        "last_read_message": room.get("lastReadMessage", 0),
+        "unread_messages": room.get("unreadMessages", 0),
+        "unread_mention": room.get("unreadMention", False),
+    }
+
+
+def _register_chat_read_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def get_message_context(
+        token: str, message_id: int, limit: int = 20, thread_id: int = 0, include_system: bool = False
+    ) -> str:
+        """Get the messages around one message, e.g. to read the discussion a search result or mention is in.
+
+        Reading context leaves the read marker and notifications as they are.
+
+        Args:
+            token: The conversation token.
+            message_id: The message to center on.
+            limit: How many messages to fetch before and after it (1-100, default 20).
+            thread_id: Only messages of this thread (default 0 = the whole conversation).
+            include_system: Also show system messages such as joins and edits (default false).
+
+        Returns:
+            One line per message, oldest first, in the same "[id] author: text" form as
+            get_messages; the requested message's line is marked with ">>".
+        """
+        limit = max(1, min(100, limit))
+        # Talk's context endpoint clears the reader's mention notifications, so the chat endpoint is read
+        # twice instead, with read marker and notifications left alone
+        common: dict[str, str] = {"lastKnownMessageId": str(message_id), "setReadMarker": "0"}
+        common["markNotificationsAsRead"] = "0"
+        if thread_id:
+            common["threadId"] = str(thread_id)
+        path = _chat_path(token)
+        client = get_client()
+        older_params = {**common, "lookIntoFuture": "0", "includeLastKnown": "1", "limit": str(limit + 1)}
+        newer_params = {**common, "lookIntoFuture": "1", "timeout": "0", "limit": str(limit)}
+        with _thread_errors(token, thread_id):
+            older: list[dict[str, Any]] = await client.ocs_get(path, params=older_params) or []
+            # Talk answers 304 with no body when nothing is newer
+            newer: list[dict[str, Any]] = await client.ocs_get(path, params=newer_params) or []
+        messages = sorted([*older, *newer], key=lambda m: int(m.get("id", 0)))
+        shown = [m for m in messages if include_system or m.get("id") == message_id or not m.get("systemMessage")]
+        lines = [(">> " if m.get("id") == message_id else "") + _format_message_compact(m) for m in shown]
+        if not any(m.get("id") == message_id for m in messages):
+            note = f"(Message {message_id} is not in this conversation or thread; these are the messages around"
+            lines.insert(0, f"{note} its position.)")
+        return "\n".join(lines) if shown else f"No messages around message {message_id}."
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def get_reactions(token: str, message_id: int, reaction: str = "") -> str:
+        """List who reacted to a message, and with what.
+
+        Args:
+            token: The conversation token.
+            message_id: The message ID.
+            reaction: Only this reaction, e.g. "👍" (default: all).
+
+        Returns:
+            JSON object mapping each reaction to the display names of who used it.
+        """
+        params = {"reaction": reaction} if reaction else None
+        data = await get_client().ocs_get(f"apps/spreed/api/v1/reaction/{token}/{message_id}", params=params)
+        return json.dumps(_format_reactions(data), ensure_ascii=False)
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_shared_items(token: str, item_type: str = "", limit: int = 20) -> str:
+        """List what was shared in a conversation: files, media, polls, locations, pinned messages and more.
+
+        Args:
+            token: The conversation token.
+            item_type: One type to list: audio, deckcard, file, location, media, other,
+                pinned, poll, recording or voice. Empty (default) gives the latest few
+                of every type.
+            limit: Maximum items (per type without item_type: 1-20, default 20;
+                with item_type: 1-200).
+
+        Returns:
+            JSON object mapping each type to its items, each the chat message that
+            shared it ("[id] author: text"), in Talk's order (newest first; pinned
+            messages by when they were pinned).
+        """
+        client = get_client()
+        grouped: dict[str, list[dict[str, Any]]]
+        if not item_type:
+            params: dict[str, Any] = {"limit": max(1, min(20, limit))}
+            data = await client.ocs_get(_chat_path(token, "share", "overview"), params=params)
+            grouped = cast(dict[str, list[dict[str, Any]]], data or {})
+        elif item_type in _SHARED_ITEM_TYPES:
+            params = {"objectType": item_type, "limit": max(1, min(200, limit))}
+            data = await client.ocs_get(_chat_path(token, "share"), params=params)
+            # Keyed by message ID, or an empty list when there is nothing
+            items: list[dict[str, Any]] = list(cast(dict[str, dict[str, Any]], data).values()) if data else []
+            grouped = {item_type: items}
+        else:
+            raise ValueError(f"Invalid item_type '{item_type}'. Must be one of: {', '.join(_SHARED_ITEM_TYPES)}")
+        result = {kind: [_format_message_compact(m) for m in msgs] for kind, msgs in grouped.items() if msgs}
+        return json.dumps(result, ensure_ascii=False)
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def search_mentions(token: str, search: str, limit: int = 20) -> str:
+        """Find who can be mentioned in a conversation, for writing a message that mentions them.
+
+        Args:
+            token: The conversation token.
+            search: Part of a name or ID; an empty string lists the first matches.
+            limit: Maximum results (1-50, default 20). Needs a conversation you can
+                write in.
+
+        Returns:
+            JSON list of matches with id, label (display name), source (users, groups,
+            guests, calls for everyone in the room, ...) and "mention", the text to put in
+            the message, e.g. @"john.doe".
+        """
+        limit = max(1, min(50, limit))
+        params = {"search": search, "limit": limit}
+        data: list[dict[str, Any]] = await get_client().ocs_get(_chat_path(token, "mentions"), params=params)
+        return json.dumps(
+            [
+                {
+                    "id": m.get("id", ""),
+                    "label": m.get("label", ""),
+                    "source": m.get("source", ""),
+                    "mention": f'@"{m.get("mentionId") or m.get("id", "")}"',
+                }
+                for m in (data or [])[:limit]
+            ],
+            ensure_ascii=False,
+        )
+
+
+def _register_chat_write_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def edit_message(token: str, message_id: int, message: str) -> str:
+        """Replace the text of a chat message. Talk marks it as edited and tells the conversation.
+
+        Only your own messages (or, for a moderator, any in a group conversation), only
+        within 24 hours, and not system messages or shared polls and locations; for a
+        shared file the new text becomes its caption. Mentions read back from
+        get_messages show names; to keep a mention when editing, write it as
+        search_mentions gives it (@"user-id").
+
+        Args:
+            token: The conversation token.
+            message_id: The message to edit.
+            message: The new text. Mentions work as in send_message.
+
+        Returns:
+            JSON with the edited message.
+        """
+        try:
+            data = await get_client().ocs_put_json(_chat_path(token, message_id), json_data={"message": message})
+        except NextcloudError as e:
+            code = _ERROR_CODE.search(str(e))
+            reason = _EDIT_ERRORS.get(code.group(1)) if code else None
+            reason = reason or _EDIT_STATUS_ERRORS.get(e.status_code)
+            raise NextcloudError(f"{e}: {reason}" if reason else str(e), e.status_code) from e
+        return json.dumps(_format_message_full(data.get("parent") or data), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def add_reaction(token: str, message_id: int, reaction: str) -> str:
+        """React to a chat message with an emoji. Reacting twice with the same one changes nothing.
+
+        Args:
+            token: The conversation token.
+            message_id: The message to react to.
+            reaction: One emoji, e.g. "👍".
+
+        Returns:
+            JSON object mapping each reaction on the message to who used it.
+        """
+        data = await get_client().ocs_post_json(
+            f"apps/spreed/api/v1/reaction/{token}/{message_id}", json_data={"reaction": reaction}
+        )
+        return json.dumps(_format_reactions(data), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def mark_conversation_read(token: str, message_id: int = 0) -> str:
+        """Mark a conversation as read, up to a message or completely.
+
+        Marking it completely read also dismisses your Talk notifications for it.
+
+        Args:
+            token: The conversation token.
+            message_id: The last message to count as read (default 0 = everything).
+
+        Returns:
+            JSON with last_read_message, unread_messages and unread_mention afterwards.
+        """
+        body = {"lastReadMessage": message_id} if message_id else {}
+        data = await get_client().ocs_post_json(_chat_path(token, "read"), json_data=body)
+        return json.dumps(_format_unread(data))
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def mark_conversation_unread(token: str) -> str:
+        """Mark the last message of a conversation as unread again, as the "Mark as unread" menu entry does.
+
+        Args:
+            token: The conversation token.
+
+        Returns:
+            JSON with last_read_message, unread_messages and unread_mention afterwards.
+        """
+        data = await get_client().ocs_delete(_chat_path(token, "read"))
+        return json.dumps(_format_unread(data))
+
+
+def _register_chat_destructive_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def remove_reaction(token: str, message_id: int, reaction: str) -> str:
+        """Take back your reaction to a chat message.
+
+        Args:
+            token: The conversation token.
+            message_id: The message.
+            reaction: The emoji to remove, e.g. "👍".
+
+        Returns:
+            JSON object mapping each remaining reaction to who used it.
+        """
+        path = f"apps/spreed/api/v1/reaction/{token}/{message_id}?reaction={quote(reaction, safe='')}"
+        data = await get_client().ocs_delete(path)
+        return json.dumps(_format_reactions(data), ensure_ascii=False)
+
+
 def register(mcp: FastMCP) -> None:
     """Register Talk tools with the MCP server."""
     _register_read_tools(mcp)
@@ -795,3 +1103,6 @@ def register(mcp: FastMCP) -> None:
     _register_write_tools(mcp)
     _register_thread_read_tools(mcp)
     _register_thread_write_tools(mcp)
+    _register_chat_read_tools(mcp)
+    _register_chat_write_tools(mcp)
+    _register_chat_destructive_tools(mcp)

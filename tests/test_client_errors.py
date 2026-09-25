@@ -146,3 +146,31 @@ class TestOcsFieldErrorsAndHints:
         assert message.startswith("Password confirmation is required. ")
         assert "app password" in message
         assert "allowed_no_password_confirmation_ranges" in message
+
+
+class TestOcsErrorCode:
+    def test_code_is_added_to_an_empty_message(self) -> None:
+        """Talk answers refusals with {"error": "age"} and no message; the code tells them apart."""
+        body = _ocs_error_body("", 400)
+        body["ocs"]["data"] = {"error": "age"}
+        with pytest.raises(NextcloudError, match=r"^OCS PUT x: HTTP 400 \(age\)$"):
+            _raise_for_ocs_status(_fake_response(400, body), "OCS PUT x")
+
+    def test_known_status_keeps_its_wording(self) -> None:
+        body = _ocs_error_body("", 403)
+        body["ocs"]["data"] = {"error": "permission"}
+        with pytest.raises(NextcloudError, match=r"^Forbidden\..*\(permission\)$"):
+            _raise_for_ocs_status(_fake_response(403, body))
+
+    @pytest.mark.parametrize("data", [{"error": ""}, {"error": 5}, {"other": "x"}])
+    def test_no_usable_code(self, data: Any) -> None:
+        body = _ocs_error_body("", 400)
+        body["ocs"]["data"] = data
+        with pytest.raises(NextcloudError, match=r"^HTTP 400$"):
+            _raise_for_ocs_status(_fake_response(400, body))
+
+    def test_message_wins_over_the_code(self) -> None:
+        body = _ocs_error_body("Room not found", 404)
+        body["ocs"]["data"] = {"error": "room"}
+        with pytest.raises(NextcloudError, match=r"^Room not found$"):
+            _raise_for_ocs_status(_fake_response(404, body))

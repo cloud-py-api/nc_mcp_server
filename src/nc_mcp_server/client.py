@@ -59,7 +59,9 @@ def _raise_for_ocs_status(response: niquests.Response, context: str = "") -> Non
     prefix = f"{context}: " if context else ""
     try:
         ocs = response.json()["ocs"]
-        ocs_message: str = ocs["meta"]["message"] or _ocs_field_errors(ocs.get("data"))
+        ocs_message: str = (
+            ocs["meta"]["message"] or _ocs_field_errors(ocs.get("data")) or _ocs_error_code(code, ocs.get("data"))
+        )
         if ocs_message == _CONFIRMATION_REQUIRED:
             ocs_message += _CONFIRMATION_HINT
         if ocs_message:
@@ -76,6 +78,20 @@ _CONFIRMATION_HINT = (
     " account's login password, or have an admin add this server's address to"
     " 'allowed_no_password_confirmation_ranges' in config.php"
 )
+
+
+def _ocs_error_code(status: int, data: object) -> str:
+    """The status message plus the code Talk and other apps send as {"error": "..."} with an empty message.
+
+    Without it every refusal of an endpoint reads the same ("HTTP 400"), though the code tells them
+    apart ("age", "permission", ...).
+    """
+    if not isinstance(data, dict):
+        return ""
+    error = cast(dict[str, Any], data).get("error")
+    if not isinstance(error, str) or not error:
+        return ""
+    return f"{_STATUS_MESSAGES.get(status, f'HTTP {status}')} ({error})"
 
 
 def _ocs_field_errors(data: object) -> str:
