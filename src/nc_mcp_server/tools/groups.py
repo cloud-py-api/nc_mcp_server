@@ -42,8 +42,9 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
         Args:
             search: Optional text to filter groups by ID or display name.
-            limit: Maximum number of groups to return (1-200, default 50).
-            offset: Number of groups to skip for pagination (default 0).
+            limit: Maximum number of groups to take from each group backend
+                (1-200, default 50).
+            offset: Number of groups to skip in each group backend (default 0).
 
         Returns:
             JSON with "data" (list of groups with id, display_name, user_count,
