@@ -8,7 +8,12 @@ from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, DESTRUCTIVE, READONLY
 from ..client import NextcloudClient, NextcloudError
-from ..permissions import PermissionDeniedError, PermissionLevel, get_permission_level, require_permission
+from ..permissions import (
+    PermissionDeniedError,
+    PermissionLevel,
+    get_permission_level,
+    require_permission,
+)
 from ..state import get_client
 
 # Nextcloud 34 and 35 turn away regular users from PATCH cloud/users/{userId} with this message, even
