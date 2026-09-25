@@ -117,6 +117,8 @@ def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
         "notification_level": _notification_level_name(room.get("notificationLevel", 0)),
         "call_notifications": room.get("notificationCalls", 1) == 1,
         "pinned_message_id": pinned,
+        "tag_ids": room.get("tagIds", []),
+        "is_preserved": bool(int(room.get("attributes", 0) or 0) & 2),  # RoomAttributes::PRESERVE_CONVERSATION
         "participant_count": room.get("participantCount", 0),
         "can_leave": room.get("canLeaveConversation", False),
         "can_delete": room.get("canDeleteConversation", False),
@@ -627,6 +629,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
         room_type: int,
         name: str,
         invite: str = "",
+        description: str = "",
+        preset: str = "",
     ) -> str:
         """Create a new Talk conversation.
 
@@ -638,6 +642,10 @@ def _register_write_tools(mcp: FastMCP) -> None:
                        returns the existing one.
             name: Display name for the conversation (ignored for one-to-one).
             invite: User ID to invite; required for one-to-one, optional for group.
+            description: Optional description for group and public conversations.
+            preset: Optional preset identifier from list_conversation_presets; its
+                settings (permissions, lobby, read-only, ...) are applied to the new
+                conversation. An explicit room_type still wins over the preset's.
 
         Returns:
             JSON object with the created conversation details, including its token.
@@ -651,6 +659,11 @@ def _register_write_tools(mcp: FastMCP) -> None:
         post_data: dict[str, Any] = {"roomType": room_type, "roomName": name}
         if invite:
             post_data["invite"] = invite
+        if description:
+            post_data["description"] = description
+        if preset:
+            # Talk only records which preset was used; its settings have to be sent along
+            post_data = {**await _preset_settings(preset), **post_data, "preset": preset}
         data = await client.ocs_post("apps/spreed/api/v4/room", data=post_data)
         return json.dumps(_format_conversation(data), default=str)
 
@@ -1360,7 +1373,13 @@ _PARTICIPANT_SOURCES = ("users", "groups", "circles", "emails", "federated_users
 _ROLE_TYPES = {"owner": 1, "moderator": 2, "user": 3}
 
 # The endpoint behind each update_conversation argument
-_CONVERSATION_FIELDS = {"name": "name", "description": "description", "read-only": "read_only", "public": "public"}
+_CONVERSATION_FIELDS = {
+    "name": "name",
+    "description": "description",
+    "read-only": "read_only",
+    "public": "public",
+    "preserve": "preserved",
+}
 
 
 async def _participant(token: str, attendee_id: int) -> dict[str, Any]:
@@ -1382,15 +1401,21 @@ async def _apply_conversation_field(token: str, field: str, value: Any) -> dict[
         data = await client.ocs_put(f"{path}/description", data={"description": value})
     elif field == "read-only":
         data = await client.ocs_put(f"{path}/read-only", data={"state": int(value)})
+    elif field == "preserve":
+        data = await (client.ocs_post(f"{path}/preserve") if value else client.ocs_delete(f"{path}/preserve"))
     else:
         data = await (client.ocs_post(f"{path}/public") if value else client.ocs_delete(f"{path}/public"))
     return cast(dict[str, Any], data)
 
 
-async def _supports_owners() -> bool:
+async def _has_talk_feature(feature: str) -> bool:
     capabilities = await get_client().ocs_get("cloud/capabilities")
     features = capabilities.get("capabilities", {}).get("spreed", {}).get("features", [])
-    return "promote-demote-owner" in features
+    return feature in features
+
+
+async def _supports_owners() -> bool:
+    return await _has_talk_feature("promote-demote-owner")
 
 
 async def _change_guest_role(path: str, attendee_id: int, current: int, role: str) -> None:
@@ -1444,6 +1469,7 @@ def _register_conversation_admin_tools(mcp: FastMCP) -> None:
         description: str | None = None,
         read_only: bool | None = None,
         public: bool | None = None,
+        preserved: bool | None = None,
     ) -> str:
         """Change a conversation for everyone in it. Needs moderator rights.
 
@@ -1462,6 +1488,9 @@ def _register_conversation_admin_tools(mcp: FastMCP) -> None:
                 note-to-self and breakout conversations. False makes it invite only
                 and removes everyone who joined through the link, so it needs the
                 destructive permission level.
+            preserved: True to protect it: it cannot be deleted, its history not
+                cleared, and its public and joinable settings not changed until it
+                is unpreserved. Owners only; needs Talk 25 (Nextcloud 35).
 
         Returns:
             JSON with the conversation afterwards.
@@ -1469,8 +1498,15 @@ def _register_conversation_admin_tools(mcp: FastMCP) -> None:
         current = get_permission_level()
         if public is False and not current.includes(PermissionLevel.DESTRUCTIVE):
             raise PermissionDeniedError("update_conversation with public=false", PermissionLevel.DESTRUCTIVE, current)
+        if preserved is not None and not await _has_talk_feature("preserve-conversation"):
+            raise NextcloudError("Preserving conversations needs Talk 25 (Nextcloud 35)", 400)
         fields = {"name": name, "description": description, "read-only": read_only, "public": public}
         steps = [(field, value) for field, value in fields.items() if value is not None]
+        # A preserved conversation refuses some changes, so release it first and protect it last
+        if preserved is False:
+            steps.insert(0, ("preserve", False))
+        elif preserved:
+            steps.append(("preserve", True))
         if not steps:
             raise ValueError("Pass at least one field to change.")
         room: dict[str, Any] = {}
@@ -1583,6 +1619,144 @@ def _register_conversation_admin_destructive_tools(mcp: FastMCP) -> None:
         return f"Conversation {token} deleted."
 
 
+# Talk's list also holds "forced", the settings an admin enforces on every conversation; it is not
+# something to pick
+_HIDDEN_PRESETS = {"forced"}
+
+
+async def _presets() -> list[dict[str, Any]]:
+    data: list[dict[str, Any]] = await get_client().ocs_get("apps/spreed/api/v1/presets/room") or []
+    return [p for p in data if p.get("identifier") not in _HIDDEN_PRESETS]
+
+
+async def _preset_settings(identifier: str) -> dict[str, Any]:
+    presets = await _presets()
+    found = next((p for p in presets if p.get("identifier") == identifier), None)
+    if found is None:
+        valid = ", ".join(str(p.get("identifier")) for p in presets)
+        raise ValueError(f"Unknown preset '{identifier}'. Available: {valid} (see list_conversation_presets)")
+    settings: Any = found.get("parameters") or {}
+    return dict(cast(dict[str, Any], settings)) if isinstance(settings, dict) else {}
+
+
+def _format_tag(tag: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(tag.get("id", "")),
+        "name": tag.get("name", ""),
+        "type": tag.get("type", ""),
+        "sort_order": tag.get("sortOrder", 0),
+    }
+
+
+def _register_tag_and_preset_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_conversation_tags() -> str:
+        """List your conversation tags, the personal groups of your conversation list.
+
+        Tags are yours alone; nobody else sees them. The built-in "favorites" and
+        "other" tags cannot be renamed or deleted, and the favorites group is built
+        from set_conversation_preferences(favorite=...), not from tagging.
+
+        Returns:
+            JSON list of tags with id, name, type ("favorites", "other" or
+            "custom") and sort_order. get_conversation and list_conversations show
+            each conversation's tag_ids.
+        """
+        data: list[dict[str, Any]] = await get_client().ocs_get("apps/spreed/api/v4/tags") or []
+        return json.dumps([_format_tag(t) for t in data], ensure_ascii=False)
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_conversation_presets() -> str:
+        """List the presets create_conversation can start from.
+
+        Returns:
+            JSON list of presets with identifier (what create_conversation takes),
+            name, description and the settings create_conversation applies.
+        """
+        data = await _presets()
+        return json.dumps(
+            [
+                {
+                    "identifier": p.get("identifier", ""),
+                    "name": p.get("name", ""),
+                    "description": p.get("description", ""),
+                    "settings": p.get("parameters") or {},
+                }
+                for p in data
+            ],
+            ensure_ascii=False,
+        )
+
+    @mcp.tool(annotations=ADDITIVE)
+    @require_permission(PermissionLevel.WRITE)
+    async def create_conversation_tag(name: str) -> str:
+        """Create a personal conversation tag.
+
+        Up to 100 of your own tags, with distinct names of up to 250 characters.
+
+        Args:
+            name: The tag's name.
+
+        Returns:
+            JSON with the new tag (id, name, type, sort_order).
+        """
+        data = await get_client().ocs_post_json("apps/spreed/api/v4/tags", json_data={"name": name})
+        return json.dumps(_format_tag(data), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def rename_conversation_tag(tag_id: str, name: str) -> str:
+        """Rename one of your conversation tags; its conversations keep it.
+
+        Args:
+            tag_id: The tag's ID, from list_conversation_tags.
+            name: The new name.
+
+        Returns:
+            JSON with the tag afterwards.
+        """
+        data = await get_client().ocs_put_json(f"apps/spreed/api/v4/tags/{tag_id}", json_data={"name": name})
+        return json.dumps(_format_tag(data), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_conversation_tags(token: str, tag_ids: list[str]) -> str:
+        """Set which of your tags a conversation has; tags left out are taken off.
+
+        Talk silently drops IDs it does not know and keeps at most 20, so compare
+        the returned tag_ids with what you asked for.
+
+        Args:
+            token: The conversation token.
+            tag_ids: The complete list of tag IDs, from list_conversation_tags;
+                [] removes all.
+
+        Returns:
+            JSON with the conversation afterwards, including tag_ids.
+        """
+        body = {"tagIds": [str(t) for t in tag_ids]}
+        data = await get_client().ocs_post_json(f"{_ROOM_API}/{token}/tags", json_data=body)
+        return json.dumps(_format_conversation(data), ensure_ascii=False)
+
+
+def _register_tag_destructive_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def delete_conversation_tag(tag_id: str) -> str:
+        """Delete one of your conversation tags; its conversations lose it.
+
+        Args:
+            tag_id: The tag's ID, from list_conversation_tags.
+
+        Returns:
+            Confirmation message.
+        """
+        await get_client().ocs_delete(f"apps/spreed/api/v4/tags/{tag_id}")
+        return f"Tag {tag_id} deleted."
+
+
 def register(mcp: FastMCP) -> None:
     """Register Talk tools with the MCP server."""
     _register_read_tools(mcp)
@@ -1599,3 +1773,5 @@ def register(mcp: FastMCP) -> None:
     _register_conversation_admin_tools(mcp)
     _register_participant_admin_tools(mcp)
     _register_conversation_admin_destructive_tools(mcp)
+    _register_tag_and_preset_tools(mcp)
+    _register_tag_destructive_tools(mcp)
