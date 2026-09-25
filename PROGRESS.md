@@ -70,7 +70,7 @@
 
 | Module | Tools | Tests |
 |--------|-------|-------|
-| Files | 10 | 77 |
+| Files | 10 | 165 |
 | Users | 5 | 20 |
 | Notifications | 3 | 11 |
 | Talk | 8 | 57 |
@@ -85,7 +85,7 @@
 | Shares | 5 | 40 |
 | System Tags | 6 | 22 |
 | Mail | 10 | 102 |
-| Collectives | 11 | 36 |
+| Collectives | 11 | 37 |
 | App Management | 4 | 14 |
 | Calendar | 6 | 44 |
 | Contacts | 6 | 36 |
@@ -103,7 +103,7 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **167** | **1063** |
+| **Total** | **167** | **1152** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
 `NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 166 tools.
