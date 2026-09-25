@@ -162,6 +162,37 @@ PROPFIND_BODY = """<?xml version="1.0" encoding="UTF-8"?>
 </d:propfind>"""
 
 
+# What Nextcloud answers (HTTP 403) when an action needs a confirmed password: the plain check wants a
+# confirmation less than 30 minutes old, the strict one the password in the request's own header.
+_NOT_CONFIRMED_MESSAGES = ("Password confirmation is required", "Required authorization header missing")
+
+
+def _needs_password_confirmation(response: niquests.Response) -> bool:
+    """Tell a refused password confirmation from other 403s.
+
+    Plain JSON routes mark it with a header; OCS rebuilds the response without it, so there the
+    message decides. Both messages are fixed English strings in Nextcloud, never translated.
+    """
+    if response.status_code != 403:
+        return False
+    if response.headers.get("X-NC-Auth-NotConfirmed") == "true":
+        return True
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    payload = cast(dict[str, Any], body)
+    ocs = payload.get("ocs")
+    if isinstance(ocs, dict):
+        meta = cast(dict[str, Any], ocs).get("meta")
+        message = cast(dict[str, Any], meta).get("message") if isinstance(meta, dict) else None
+    else:
+        message = payload.get("message")
+    return message in _NOT_CONFIRMED_MESSAGES
+
+
 class NextcloudClient:
     """Async HTTP client for Nextcloud APIs.
 
@@ -263,13 +294,30 @@ class NextcloudClient:
         self._session.auth = saved_auth
 
     async def _do_request(self, method: str, url: str, **kwargs: Any) -> niquests.Response:
-        """Execute an HTTP request, retrying once if a cached session expired."""
+        """Execute an HTTP request, retrying once if a cached session expired or lacks a password confirmation."""
         session = await self._get_session()
         response = await session.request(method, url, **kwargs)
         if await self._should_retry_auth(response):
             session = await self._get_session()
             response = await session.request(method, url, **kwargs)
+        if self._session_is_cached and _needs_password_confirmation(response):
+            response = await self._request_with_password(method, url, **kwargs)
         return response
+
+    async def _request_with_password(self, method: str, url: str, **kwargs: Any) -> niquests.Response:
+        """Send one request as a fresh Basic Auth login, outside the cached session.
+
+        The cached session's password confirmation expires after 30 minutes, and the session never
+        carries the password header strict endpoints (enabling apps, for one) demand. A new login
+        confirms the password, sends that header, and, having no session cookie, also lets
+        'allowed_no_password_confirmation_ranges' apply, which Nextcloud skips for session logins.
+        """
+        log.debug("Password confirmation missing, repeating %s %s with a fresh login", method, url)
+        session = self._build_session()
+        try:
+            return await session.request(method, url, **kwargs)
+        finally:
+            await session.close()
 
     async def close(self) -> None:
         """Close the HTTP session."""
