@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterable, Callable
 from typing import Any, cast
 from urllib.parse import quote as url_quote
+from urllib.parse import unquote as url_unquote
 
 import niquests
 from urllib3.util import Retry, Timeout
@@ -354,10 +355,23 @@ class NextcloudClient:
 
     # --- WebDAV ---
 
+    @property
+    def _dav_user(self) -> str:
+        """The user ID as a URL path segment; a space, quote or "@" is valid in one."""
+        return url_quote(self._config.user, safe="")
+
+    def _files_url(self, path: str) -> str:
+        """Build the WebDAV URL of a path in the user's files.
+
+        Paths are taken literally, so every segment is percent-encoded: sent raw, a "#"
+        or "?" in a name would cut the URL short and a "%" would be decoded by the
+        server, and the request would silently hit a different file.
+        """
+        return f"{self._base_url}/remote.php/dav/files/{self._dav_user}/{url_quote(path.lstrip('/'), safe='/')}"
+
     async def dav_propfind(self, path: str, depth: int = 1) -> list[dict[str, Any]]:
         """PROPFIND on a WebDAV path. Returns list of file/folder entries."""
-        user = self._config.user
-        url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
+        url = self._files_url(path)
         response = await self._do_request(
             "PROPFIND",
             url,
@@ -369,12 +383,11 @@ class NextcloudClient:
         )
         _raise_for_status(response, f"List directory '{path}'")
         text = response.text or ""
-        return self._parse_propfind(text, user)
+        return self._parse_propfind(text, self._config.user)
 
     async def dav_get(self, path: str) -> tuple[bytes, str]:
         """GET a file's content via WebDAV. Returns (content, content_type)."""
-        user = self._config.user
-        url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
+        url = self._files_url(path)
         response = await self._do_request("GET", url)
         _raise_for_status(response, f"Get file '{path}'")
         ct = response.headers.get("content-type", "application/octet-stream")
@@ -383,8 +396,7 @@ class NextcloudClient:
 
     async def dav_put(self, path: str, content: bytes, content_type: str = "application/octet-stream") -> None:
         """PUT (upload/overwrite) a file via WebDAV."""
-        user = self._config.user
-        url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
+        url = self._files_url(path)
         response = await self._do_request("PUT", url, data=content, headers={"Content-Type": content_type})
         _raise_for_status(response, f"Upload file '{path}'")
 
@@ -409,8 +421,7 @@ class NextcloudClient:
         The read timeout is disabled — a multi-GB upload can legitimately take
         minutes. Connect timeout still applies via the session default.
         """
-        user = self._config.user
-        url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
+        url = self._files_url(path)
         headers = {"Content-Type": content_type}
         timeout = Timeout(connect=30, read=None)
 
@@ -423,23 +434,20 @@ class NextcloudClient:
 
     async def dav_delete(self, path: str) -> None:
         """DELETE a file or folder via WebDAV."""
-        user = self._config.user
-        url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
+        url = self._files_url(path)
         response = await self._do_request("DELETE", url)
         _raise_for_status(response, f"Delete '{path}'")
 
     async def dav_mkcol(self, path: str) -> None:
         """MKCOL (create directory) via WebDAV."""
-        user = self._config.user
-        url = f"{self._base_url}/remote.php/dav/files/{user}/{path.lstrip('/')}"
+        url = self._files_url(path)
         response = await self._do_request("MKCOL", url)
         _raise_for_status(response, f"Create directory '{path}'")
 
     async def dav_copy(self, source: str, destination: str) -> None:
         """COPY a file or folder via WebDAV."""
-        user = self._config.user
-        src_url = f"{self._base_url}/remote.php/dav/files/{user}/{source.lstrip('/')}"
-        dest_url = f"{self._base_url}/remote.php/dav/files/{user}/{destination.lstrip('/')}"
+        src_url = self._files_url(source)
+        dest_url = self._files_url(destination)
         response = await self._do_request(
             "COPY",
             src_url,
@@ -449,9 +457,8 @@ class NextcloudClient:
 
     async def dav_move(self, source: str, destination: str) -> None:
         """MOVE a file or folder via WebDAV."""
-        user = self._config.user
-        src_url = f"{self._base_url}/remote.php/dav/files/{user}/{source.lstrip('/')}"
-        dest_url = f"{self._base_url}/remote.php/dav/files/{user}/{destination.lstrip('/')}"
+        src_url = self._files_url(source)
+        dest_url = self._files_url(destination)
         response = await self._do_request(
             "MOVE",
             src_url,
@@ -463,7 +470,7 @@ class NextcloudClient:
 
     async def trashbin_propfind(self) -> str:
         """PROPFIND on the trashbin root. Returns raw XML text."""
-        user = self._config.user
+        user = self._dav_user
         url = f"{self._base_url}/remote.php/dav/trashbin/{user}/trash/"
         body = (
             '<?xml version="1.0"?>'
@@ -485,7 +492,7 @@ class NextcloudClient:
 
     async def trashbin_restore(self, trash_path: str) -> None:
         """Restore a trashed item by MOVEing it to the restore folder."""
-        user = self._config.user
+        user = self._dav_user
         encoded = url_quote(trash_path, safe="/")
         src = f"{self._base_url}/remote.php/dav/trashbin/{user}/trash/{encoded}"
         dest = f"{self._base_url}/remote.php/dav/trashbin/{user}/restore/{encoded}"
@@ -494,7 +501,7 @@ class NextcloudClient:
 
     async def versions_propfind(self, file_id: int) -> str:
         """PROPFIND on the versions collection for a file. Returns raw XML text."""
-        user = self._config.user
+        user = self._dav_user
         url = f"{self._base_url}/remote.php/dav/versions/{user}/versions/{file_id}/"
         body = (
             '<?xml version="1.0"?>'
@@ -515,7 +522,7 @@ class NextcloudClient:
 
     async def versions_restore(self, file_id: int, version_id: str) -> None:
         """Restore a file version by MOVEing it to the restore folder."""
-        user = self._config.user
+        user = self._dav_user
         src = f"{self._base_url}/remote.php/dav/versions/{user}/versions/{file_id}/{version_id}"
         dest = f"{self._base_url}/remote.php/dav/versions/{user}/restore/target"
         response = await self._do_request("MOVE", src, headers={"Destination": dest})
@@ -523,7 +530,7 @@ class NextcloudClient:
 
     async def trashbin_delete(self, trash_path: str = "") -> None:
         """Delete a single item or empty the entire trash (if path is empty)."""
-        user = self._config.user
+        user = self._dav_user
         encoded = url_quote(trash_path, safe="/") if trash_path else ""
         url = f"{self._base_url}/remote.php/dav/trashbin/{user}/trash/{encoded}"
         response = await self._do_request("DELETE", url)
@@ -559,8 +566,8 @@ class NextcloudClient:
             if href_el is None or href_el.text is None:
                 continue
 
-            href = href_el.text
-            # Strip the DAV prefix to get the relative path
+            # Hrefs come percent-encoded; report the literal path the other tools accept
+            href = url_unquote(href_el.text)
             path = (href.split(dav_prefix, 1)[1] if dav_prefix in href else href).rstrip("/")
 
             prop = find_ok_prop(response)

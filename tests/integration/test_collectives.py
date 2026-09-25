@@ -243,6 +243,24 @@ class TestGetCollectivePage:
         finally:
             await _destroy_collective(nc_mcp, coll["id"])
 
+    @pytest.mark.asyncio
+    async def test_title_with_url_characters(self, nc_mcp: McpTestHelper) -> None:
+        """A "#" or "%" in the title ends up in the file name, which must still be read."""
+        coll = await _create_collective(nc_mcp, "urlchars")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Release #5 at 100%"
+                )
+            )
+            await _write_page(nc_mcp, coll["id"], page["id"], "release notes")
+            result = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page["id"]))
+            assert result["content"] == "release notes"
+            assert result["size"] == len("release notes")
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
 
 class TestCreateCollectivePage:
     @pytest.mark.asyncio
