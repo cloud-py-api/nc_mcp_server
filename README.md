@@ -299,8 +299,9 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `delete_message` | destructive | Delete a message |
 | `leave_conversation` | destructive | Leave a conversation |
 
-The thread tools need a Talk version that advertises the `threads` capability (Talk 24, which
-ships with Nextcloud 34, and newer). A thread ID is the message ID of the thread's first message.
+The thread tools need a Talk version that advertises the `threads` capability (Talk 22, which
+ships with Nextcloud 32, and newer), so every Nextcloud release supported here has them.
+A thread ID is the message ID of the thread's first message.
 
 ### Talk Polls
 

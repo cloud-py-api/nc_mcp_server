@@ -6,6 +6,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, DESTRUCTIVE, READONLY
+from ..client import NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -37,6 +38,20 @@ def _format_page(p: dict[str, Any]) -> dict[str, Any]:
         "last_user_id": p.get("lastUserId"),
         "tags": p.get("tags", []),
     }
+
+
+def _page_dav_path(p: dict[str, Any]) -> str:
+    """Build the WebDAV path of the Markdown file behind a page.
+
+    Collectives stores every page as a file in the user's collectives mount, and the
+    page object spells that location out in three parts: collectivePath is the
+    collective's folder, filePath the page's folder inside it (empty for a page at the
+    top level) and fileName the Markdown file itself. A page that has subpages becomes
+    a folder of its own holding a Readme.md, which is why the path has to be read back
+    from the page object instead of being derived from the title.
+    """
+    parts = [str(p.get(key) or "").strip("/") for key in ("collectivePath", "filePath", "fileName")]
+    return "/".join(part for part in parts if part)
 
 
 def _register_read_tools(mcp: FastMCP) -> None:
@@ -85,7 +100,8 @@ def _register_read_tools(mcp: FastMCP) -> None:
 
         Returns:
             JSON with "data" (list of pages with id, title, emoji, timestamp, size)
-            and "pagination" (count, offset, limit, has_more).
+            and "pagination" (count, offset, limit, has_more). Page text is not
+            included here; read one page with get_collective_page to get it.
         """
         limit = max(1, min(200, limit))
         offset = max(0, offset)
@@ -108,19 +124,29 @@ def _register_read_tools(mcp: FastMCP) -> None:
     async def get_collective_page(collective_id: int, page_id: int) -> str:
         """Get a single page from a collective, including its content.
 
-        Returns full page details with the Markdown content of the page.
+        Collectives serves page metadata and page text from two different places, so
+        this reads the page's Markdown file after the metadata call.
 
         Args:
             collective_id: The numeric collective ID.
             page_id: The numeric page ID. Use get_collective_pages to find IDs.
 
         Returns:
-            JSON object with page details including content (Markdown).
+            JSON object with page details and "content", the page's Markdown text.
+            An empty page has an empty string. When the file cannot be read,
+            "content" is null and "content_error" says why.
         """
         client = get_client()
         data = await client.ocs_get(f"{API}/collectives/{collective_id}/pages/{page_id}")
         page = data["page"]
-        return json.dumps(_format_page(page), default=str)
+        result = _format_page(page)
+        try:
+            raw, _ = await client.dav_get(_page_dav_path(page))
+            result["content"] = raw.decode("utf-8", errors="replace")
+        except NextcloudError as e:
+            result["content"] = None
+            result["content_error"] = str(e)
+        return json.dumps(result, default=str)
 
 
 def _register_write_tools(mcp: FastMCP) -> None:

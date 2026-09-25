@@ -48,14 +48,19 @@ _RESULT_MODES: dict[int, str] = {
     1: "hidden",
 }
 
-# Per-thread notification levels (same values as the conversation-level setting)
-_THREAD_NOTIFICATION_LEVELS: dict[int, str] = {
+# Notification levels, used both per conversation and per thread
+_NOTIFICATION_LEVELS: dict[int, str] = {
     0: "default",
     1: "always",
     2: "mention",
     3: "never",
 }
-_THREAD_NOTIFICATION_LEVEL_IDS: dict[str, int] = {name: level for level, name in _THREAD_NOTIFICATION_LEVELS.items()}
+_NOTIFICATION_LEVEL_IDS: dict[str, int] = {name: level for level, name in _NOTIFICATION_LEVELS.items()}
+
+
+def _notification_level_name(level: Any) -> str:
+    """Name a notification level, keeping the raw value visible if Talk adds one."""
+    return _NOTIFICATION_LEVELS.get(level, f"unknown({level})")
 
 
 def _format_poll(poll: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +99,8 @@ def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
         "unread_mention": room.get("unreadMention", False),
         "last_activity": room.get("lastActivity", 0),
         "is_favorite": room.get("isFavorite", False),
+        "is_archived": room.get("isArchived", False),
+        "notification_level": _notification_level_name(room.get("notificationLevel", 0)),
         "participant_count": room.get("participantCount", 0),
         "can_leave": room.get("canLeaveConversation", False),
         "can_delete": room.get("canDeleteConversation", False),
@@ -154,7 +161,7 @@ def _format_thread(info: dict[str, Any]) -> dict[str, Any]:
         "title": thread.get("title", ""),
         "num_replies": thread.get("numReplies", 0),
         "last_activity": thread.get("lastActivity", 0),
-        "notification_level": _THREAD_NOTIFICATION_LEVELS.get(level, f"unknown({level})"),
+        "notification_level": _notification_level_name(level),
         "first": _format_message_compact(first) if first else None,
         "last": _format_message_compact(last) if last else None,
     }
@@ -207,9 +214,9 @@ def _build_message_payload(message: str, reply_to: int, thread_id: int, thread_t
 
 def _parse_thread_notification_level(level: str) -> int:
     """Map a notification level name to the integer Talk expects."""
-    level_id = _THREAD_NOTIFICATION_LEVEL_IDS.get(level.strip().lower())
+    level_id = _NOTIFICATION_LEVEL_IDS.get(level.strip().lower())
     if level_id is None:
-        valid = ", ".join(_THREAD_NOTIFICATION_LEVEL_IDS)
+        valid = ", ".join(_NOTIFICATION_LEVEL_IDS)
         raise ValueError(f"Invalid level '{level}'. Must be one of: {valid}")
     return level_id
 
@@ -253,17 +260,16 @@ def _register_read_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
     async def list_conversations(
-        include_notifications_disabled: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> str:
         """List Talk conversations the current user is part of.
 
-        Returns conversations sorted by last activity (newest first).
+        Returns every conversation the user has joined, sorted by last activity
+        (newest first). Muted and archived conversations are included; Talk has
+        no filter for them.
 
         Args:
-            include_notifications_disabled: If true, also return conversations where
-                notifications are disabled (default: false).
             limit: Maximum number of conversations to return (1-200, default 50).
             offset: Number of conversations to skip for pagination (default 0).
 
@@ -274,10 +280,9 @@ def _register_read_tools(mcp: FastMCP) -> None:
         limit = max(1, min(200, limit))
         offset = max(0, offset)
         client = get_client()
-        params: dict[str, str] = {}
-        if not include_notifications_disabled:
-            params["noStatusUpdate"] = "0"
-        data = await client.ocs_get("apps/spreed/api/v4/room", params=params)
+        # Talk reads noStatusUpdate only to decide whether to bump the user's presence
+        # to online for its mobile clients, which listing from a tool must not do.
+        data = await client.ocs_get("apps/spreed/api/v4/room", params={"noStatusUpdate": "1"})
         all_convs = [_format_conversation(room) for room in data]
         page = all_convs[offset : offset + limit]
         has_more = offset + limit < len(all_convs)

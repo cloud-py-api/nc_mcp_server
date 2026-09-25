@@ -78,6 +78,21 @@ class TestListConversations:
             await _delete_room(nc_mcp, str(room["token"]))
 
     @pytest.mark.asyncio
+    async def test_muted_and_archived_conversations_are_listed(self, nc_mcp: McpTestHelper) -> None:
+        """Talk has no filter for these, and the tool must not pretend otherwise."""
+        room = await _create_room(nc_mcp, "test-muted-archived")
+        token = str(room["token"])
+        try:
+            await nc_mcp.client.ocs_post(f"apps/spreed/api/v4/room/{token}/notify", data={"level": 3})
+            await nc_mcp.client.ocs_post(f"apps/spreed/api/v4/room/{token}/archive")
+            data = json.loads(await nc_mcp.call("list_conversations", limit=200))["data"]
+            conv = next(c for c in data if c["token"] == token)
+            assert conv["notification_level"] == "never"
+            assert conv["is_archived"] is True
+        finally:
+            await _delete_room(nc_mcp, token)
+
+    @pytest.mark.asyncio
     async def test_conversation_type_labels(self, nc_mcp: McpTestHelper) -> None:
         group_room = await _create_room(nc_mcp, "test-type-group", room_type=2)
         public_room = await _create_room(nc_mcp, "test-type-public", room_type=3)
