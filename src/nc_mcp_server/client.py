@@ -296,11 +296,14 @@ class NextcloudClient:
     async def _do_request(self, method: str, url: str, **kwargs: Any) -> niquests.Response:
         """Execute an HTTP request, retrying once if a cached session expired or lacks a password confirmation."""
         session = await self._get_session()
+        # Taken per request: a concurrent call can swap self._session while this one is in flight
+        cached = session.auth is None
         response = await session.request(method, url, **kwargs)
         if await self._should_retry_auth(response):
             session = await self._get_session()
+            cached = session.auth is None
             response = await session.request(method, url, **kwargs)
-        if self._session_is_cached and _needs_password_confirmation(response):
+        if cached and _needs_password_confirmation(response):
             response = await self._request_with_password(method, url, **kwargs)
         return response
 

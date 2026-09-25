@@ -153,3 +153,20 @@ class TestFreshSession:
             assert len(session.cookies) == 0
         finally:
             await session.close()
+
+
+class TestConcurrentSessionSwap:
+    @pytest.mark.asyncio
+    async def test_decision_follows_the_session_that_sent_the_request(self) -> None:
+        """Another call may renew the client's session while this request is in flight."""
+        client, session, fresh = _client(cached=True, first=_response(403, "Password confirmation is required"))
+        replacement = MagicMock()
+        replacement.auth = ("admin", "secret")
+
+        async def swap_then_refuse(*_args: Any, **_kwargs: Any) -> niquests.Response:
+            client._session = replacement
+            return _response(403, "Password confirmation is required")
+
+        session.request = AsyncMock(side_effect=swap_then_refuse)
+        assert (await client._do_request("POST", URL)).status_code == 200
+        fresh.request.assert_awaited_once()

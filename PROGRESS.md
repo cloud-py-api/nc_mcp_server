@@ -97,7 +97,7 @@
 | Server | — | 8 |
 | Permissions | — | 34 |
 | Errors | — | 25 |
-| Client | — | 62 |
+| Client | — | 63 |
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 26 |
@@ -105,7 +105,7 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **173** | **1250** |
+| **Total** | **173** | **1251** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
 `NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 172 tools.
