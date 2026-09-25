@@ -94,4 +94,4 @@ class TestListConversations:
     def test_no_filter_argument_is_advertised(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
         mcp, _ = mcp_with_mock_client
         tool = next(t for t in mcp._tool_manager.list_tools() if t.name == "list_conversations")
-        assert sorted(tool.parameters["properties"]) == ["limit", "offset"]
+        assert sorted(tool.parameters["properties"]) == ["limit", "modified_since", "offset"]
