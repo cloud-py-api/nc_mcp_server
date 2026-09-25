@@ -120,11 +120,14 @@ export NEXTCLOUD_MCP_UPLOAD_ROOT=      # unset (default). If set to an absolute 
 3. Under "Devices & sessions", create a new app password
 4. Use this password for `NEXTCLOUD_PASSWORD`
 
-Since Nextcloud 34.0.1 an app-password session never counts as password-confirmed, so the admin tools Nextcloud
-guards with password confirmation (`create_user`, `update_user`, `set_user_enabled`, `delete_user`,
-`create_group`, `delete_group`, `enable_app`, `disable_app`) fail with
-"Password confirmation is required". To use them, allow the MCP server's IP address in `config.php`
-(Nextcloud 34.0.3 and newer), e.g. `'allowed_no_password_confirmation_ranges' => ['192.0.2.10/32']`.
+Since Nextcloud 34.0.1 an app-password session never counts as password-confirmed, so with an app password the
+admin tools Nextcloud guards with password confirmation (`create_user`, `update_user`, `set_user_enabled`,
+`delete_user`, `create_group`, `delete_group`, `enable_app`, `disable_app`) fail with "Password confirmation is
+required". To use them, allow the MCP server's IP address in `config.php` (Nextcloud 34.0.3 and newer), e.g.
+`'allowed_no_password_confirmation_ranges' => ['192.0.2.10/32']`. With the account's login password they work
+without that: when Nextcloud asks for a confirmation, the server repeats the request as a fresh login. Accounts
+with two-factor authentication cannot log in with their password here, so they need an app password and the
+exemption.
 
 ## Usage
 
