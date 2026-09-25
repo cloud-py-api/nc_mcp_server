@@ -193,7 +193,7 @@ class TestOneToOneAndDeletion:
             assert first["type"] == "one-to-one"
             again = json.loads(await nc_mcp.call("create_conversation", room_type=1, name="", invite=user))
             assert again["token"] == first["token"]
-            with pytest.raises(ToolError, match="cannot be deleted, only left"):
+            with pytest.raises(ToolError, match="cannot be deleted; one-to-one ones can only be left"):
                 await nc_mcp.call("delete_conversation", token=first["token"])
         finally:
             with contextlib.suppress(Exception):

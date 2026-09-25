@@ -1577,7 +1577,7 @@ def _register_conversation_admin_destructive_tools(mcp: FastMCP) -> None:
         except NextcloudError as e:
             if e.status_code != 400:
                 raise
-            raise NextcloudError(f"{e}: one-to-one conversations cannot be deleted, only left", 400) from e
+            raise NextcloudError(f"{e}: this conversation cannot be deleted; one-to-one ones can only be left", 400) from e
         return f"Conversation {token} deleted."
 
 

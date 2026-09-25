@@ -241,5 +241,5 @@ class TestConversationLifecycle:
 
     async def test_delete_one_to_one_explained(self, mcp: FastMCP, client: MagicMock) -> None:
         client.ocs_delete.side_effect = NextcloudError("OCS DELETE x: HTTP 400", 400)
-        with pytest.raises(ToolError, match="one-to-one conversations cannot be deleted, only left"):
+        with pytest.raises(ToolError, match="cannot be deleted; one-to-one ones can only be left"):
             await _call(mcp, "delete_conversation", token="tok")
