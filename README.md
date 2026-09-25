@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 197 Tools Across 24 Nextcloud Apps
+## 203 Tools Across 24 Nextcloud Apps
 
-A 198th tool, `upload_file_from_path`, is registered only when the operator sets
+A 204th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -49,7 +49,7 @@ A 198th tool, `upload_file_from_path`, is registered only when the operator sets
 | [User Status](#user-status) | get, set, clear status | OCS |
 | [Notifications](#notifications) | list, dismiss one, dismiss all | OCS |
 | [Activity](#activity) | get activity feed with filtering | OCS |
-| [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items, pins, reminders, personal settings, participant and conversation management | OCS |
+| [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items, pins, reminders, personal settings and tags, participant and conversation management | OCS |
 | [Talk Polls](#talk-polls) | get, create, vote, close polls | OCS |
 | [Announcements](#announcements) | list, create, delete announcements | OCS |
 | [Calendar](#calendar) | list calendars, CRUD events | CalDAV |
@@ -320,9 +320,11 @@ level, as does disabling an account with `set_user_enabled`.
 | `list_shared_items` | read | List files, media, polls, locations and more shared in a conversation |
 | `search_mentions` | read | Find who can be mentioned, with the text to put in a message |
 | `list_message_reminders` | read | List your upcoming message reminders |
+| `list_conversation_tags` | read | List your personal conversation tags |
+| `list_conversation_presets` | read | List the presets create_conversation can start from |
 | `send_message` | write | Send a message; can start a thread or post into one |
-| `create_conversation` | write | Create a one-to-one, group or public conversation |
-| `update_conversation` | write | Rename, describe, lock (read-only) or open (public) a conversation (moderators); making it private needs `destructive` |
+| `create_conversation` | write | Create a one-to-one, group or public conversation, optionally from a preset |
+| `update_conversation` | write | Rename, describe, lock (read-only) or open (public) a conversation (moderators); making it private needs `destructive`; owners can preserve it (Talk 25+) |
 | `add_participant` | write | Add a user, group, team, email guest or federated user (moderators) |
 | `set_participant_role` | write | Make a participant owner (Talk 25+), moderator or user |
 | `rename_thread` | write | Rename a thread |
@@ -334,6 +336,9 @@ level, as does disabling an account with `set_user_enabled`.
 | `set_conversation_preferences` | write | Your own settings: favorite, archived, important, sensitive, message and call notifications |
 | `pin_message` | write | Pin a message for everyone, optionally until a time (moderators) |
 | `set_message_reminder` | write | Get a notification about a message later |
+| `create_conversation_tag` | write | Create a personal conversation tag |
+| `rename_conversation_tag` | write | Rename a conversation tag |
+| `set_conversation_tags` | write | Set which of your tags a conversation has |
 | `delete_message` | destructive | Delete a message |
 | `leave_conversation` | destructive | Leave a conversation |
 | `remove_participant` | destructive | Remove someone from a conversation (moderators) |
@@ -341,6 +346,7 @@ level, as does disabling an account with `set_user_enabled`.
 | `remove_reaction` | destructive | Take back your reaction to a message |
 | `unpin_message` | destructive | Unpin a message for everyone, or hide it only for you |
 | `remove_message_reminder` | destructive | Cancel a message reminder |
+| `delete_conversation_tag` | destructive | Delete a conversation tag |
 
 The thread tools need a Talk version that advertises the `threads` capability (Talk 22, which
 ships with Nextcloud 32, and newer), so every Nextcloud release supported here has them.
