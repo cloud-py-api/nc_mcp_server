@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 166 Tools Across 23 Nextcloud Apps
+## 172 Tools Across 23 Nextcloud Apps
 
-A 167th tool, `upload_file_from_path`, is registered only when the operator sets
+A 173rd tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -44,7 +44,8 @@ A 167th tool, `upload_file_from_path`, is registered only when the operator sets
 | [File Comments](#file-comments) | list, add, edit, delete comments | WebDAV |
 | [File Reminders](#file-reminders) | get, set, remove per-file reminders | OCS |
 | [System Tags](#system-tags) | list, create, assign, unassign, delete tags | WebDAV |
-| [Users](#users) | get current, list, get, create, delete users | OCS |
+| [Users](#users) | get current, list, get, create, update, enable/disable, delete users | OCS |
+| [Groups](#groups) | list groups and members, create, delete groups | OCS |
 | [User Status](#user-status) | get, set, clear status | OCS |
 | [Notifications](#notifications) | list, dismiss one, dismiss all | OCS |
 | [Activity](#activity) | get activity feed with filtering | OCS |
@@ -120,7 +121,8 @@ export NEXTCLOUD_MCP_UPLOAD_ROOT=      # unset (default). If set to an absolute 
 4. Use this password for `NEXTCLOUD_PASSWORD`
 
 Since Nextcloud 34.0.1 an app-password session never counts as password-confirmed, so the admin tools Nextcloud
-guards with password confirmation (`create_user`, `delete_user`, `enable_app`, `disable_app`) fail with
+guards with password confirmation (`create_user`, `update_user`, `set_user_enabled`, `delete_user`,
+`create_group`, `delete_group`, `enable_app`, `disable_app`) fail with
 "Password confirmation is required". To use them, allow the MCP server's IP address in `config.php`
 (Nextcloud 34.0.3 and newer), e.g. `'allowed_no_password_confirmation_ranges' => ['192.0.2.10/32']`.
 
@@ -257,7 +259,24 @@ call; the body is streamed in chunks rather than loaded into memory.
 | `list_users` | read | List or search users |
 | `get_user` | read | Get specific user details |
 | `create_user` | write | Create a new user (admin only) |
+| `update_user` | write | Change display name, email, password, quota, language, manager, groups and sub-admin groups in one call (Nextcloud 34+) |
+| `set_user_enabled` | write | Enable or disable a user account (admin or sub-admin); disabling needs `destructive` |
 | `delete_user` | destructive | Delete a user (admin only) |
+
+`update_user` has Nextcloud validate every field before applying any of them. Users can change their own
+display name, email, language and password with it; Nextcloud 34 and 35 only accept the underlying call from
+admins and sub-admins, so for a regular user's own account the tool sets those fields one at a time instead,
+without that all-or-nothing check. Passing `groups` or `subadmin_groups` needs the `destructive` level, as
+does disabling an account with `set_user_enabled`.
+
+### Groups
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `list_groups` | read | List or search groups with member counts (admin) |
+| `list_group_members` | read | List the users in a group (admins, the group's sub-admins and members) |
+| `create_group` | write | Create a group (admin only) |
+| `delete_group` | destructive | Delete a group (admin only) |
 
 ### User Status
 

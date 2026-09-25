@@ -111,6 +111,17 @@ class TestUserCanAccessOwnData:
         notifs = json.loads(result)["data"]
         assert isinstance(notifs, list)
 
+    @pytest.mark.asyncio
+    async def test_update_own_display_name(self, user_mcp: McpTestHelper) -> None:
+        """Goes through the per-key fallback: Nextcloud refuses its PATCH endpoint to regular users."""
+        original = json.loads(await user_mcp.call("get_current_user"))["displayname"]
+        try:
+            result = await user_mcp.call("update_user", user_id=TEST_USER, display_name="CI User Renamed")
+            assert json.loads(result)["displayname"] == "CI User Renamed"
+        finally:
+            await user_mcp.call("update_user", user_id=TEST_USER, display_name=original)
+        assert json.loads(await user_mcp.call("get_current_user"))["displayname"] == original
+
 
 class TestAdminOnlyToolsReturnErrors:
     @pytest.mark.asyncio
@@ -147,3 +158,38 @@ class TestAdminOnlyToolsReturnErrors:
     async def test_get_app_info_forbidden(self, user_mcp: McpTestHelper) -> None:
         with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
             await user_mcp.call("get_app_info", app_id="files")
+
+    @pytest.mark.asyncio
+    async def test_update_other_user_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
+            await user_mcp.call("update_user", user_id="admin", display_name="Hijacked")
+
+    @pytest.mark.asyncio
+    async def test_update_own_quota_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match="Only admins and sub-admins can change quota"):
+            await user_mcp.call("update_user", user_id=TEST_USER, quota="none")
+
+    @pytest.mark.asyncio
+    async def test_set_user_enabled_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
+            await user_mcp.call("set_user_enabled", user_id="admin", enabled=False)
+
+    @pytest.mark.asyncio
+    async def test_list_groups_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
+            await user_mcp.call("list_groups")
+
+    @pytest.mark.asyncio
+    async def test_list_group_members_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
+            await user_mcp.call("list_group_members", group_id="admin")
+
+    @pytest.mark.asyncio
+    async def test_create_group_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
+            await user_mcp.call("create_group", group_id="mcp-test-grp-hacker")
+
+    @pytest.mark.asyncio
+    async def test_delete_group_forbidden(self, user_mcp: McpTestHelper) -> None:
+        with pytest.raises(ToolError, match=r"must be.*admin|403|[Ff]orbidden"):
+            await user_mcp.call("delete_group", group_id="admin")

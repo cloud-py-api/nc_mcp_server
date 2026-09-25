@@ -45,6 +45,7 @@
 - [x] Cospend tools: 16 tools — projects (7), members (4), bills (5) — shared expense tracking (2026-04-26)
 - [x] Mail triage tools: move_mail_message, set_mail_message_flags, create_mail_tag, add_mail_message_tag, remove_mail_message_tag via the Mail app's JSON routes; tags in message output; Mail integration tests read from Dovecot (2026-09-15)
 - [x] Talk threads: list_threads, get_thread, list_subscribed_threads, rename_thread, set_thread_notification_level; send_message starts or posts into a thread, get_messages filters by thread and marks thread messages (2026-09-18)
+- [x] User admin tools: update_user (Nextcloud 34's multi-field PATCH, with a per-key fallback for a regular user's own account), set_user_enabled; Groups tools: list_groups, list_group_members, create_group, delete_group (2026-09-25)
 
 ### In Progress
 
@@ -71,7 +72,8 @@
 | Module | Tools | Tests |
 |--------|-------|-------|
 | Files | 10 | 165 |
-| Users | 5 | 20 |
+| Users | 7 | 66 |
+| Groups | 4 | 20 |
 | Notifications | 3 | 11 |
 | Talk | 8 | 57 |
 | Talk Polls | 4 | 32 |
@@ -91,10 +93,10 @@
 | Contacts | 6 | 36 |
 | Tasks | 7 | 48 |
 | Search | 2 | 17 |
-| User Permissions | — | 15 |
+| User Permissions | — | 23 |
 | Server | — | 8 |
 | Permissions | — | 34 |
-| Errors | — | 16 |
+| Errors | — | 25 |
 | Client | — | 47 |
 | Config | — | 24 |
 | State | — | 2 |
@@ -103,7 +105,7 @@
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
-| **Total** | **167** | **1152** |
+| **Total** | **173** | **1235** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 166 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 172 tools.
