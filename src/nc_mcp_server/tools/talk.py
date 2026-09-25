@@ -12,7 +12,12 @@ from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..client import NextcloudError
-from ..permissions import PermissionLevel, require_permission
+from ..permissions import (
+    PermissionDeniedError,
+    PermissionLevel,
+    get_permission_level,
+    require_permission,
+)
 from ..state import get_client
 
 # Conversation type IDs used by Nextcloud Talk
@@ -26,7 +31,7 @@ _CONVERSATION_TYPES: dict[int, str] = {
 }
 
 # Room types accepted when creating conversations
-_VALID_ROOM_TYPES = {2: "group", 3: "public"}
+_VALID_ROOM_TYPES = {1: "one-to-one", 2: "group", 3: "public"}
 
 # Participant type IDs used by Nextcloud Talk
 _PARTICIPANT_TYPES: dict[int, str] = {
@@ -626,11 +631,13 @@ def _register_write_tools(mcp: FastMCP) -> None:
         """Create a new Talk conversation.
 
         Args:
-            room_type: 2 for group conversation, 3 for public conversation.
-                       Group conversations are invite-only.
-                       Public conversations can be joined via link.
-            name: Display name for the conversation.
-            invite: Optional user ID to invite (for group conversations).
+            room_type: 1 for a one-to-one conversation, 2 for a group conversation,
+                       3 for a public one. Group conversations are invite-only;
+                       public ones can be joined via link. A one-to-one
+                       conversation with someone you already have one with
+                       returns the existing one.
+            name: Display name for the conversation (ignored for one-to-one).
+            invite: User ID to invite; required for one-to-one, optional for group.
 
         Returns:
             JSON object with the created conversation details, including its token.
@@ -638,6 +645,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
         if room_type not in _VALID_ROOM_TYPES:
             valid = ", ".join(f"{k} ({v})" for k, v in _VALID_ROOM_TYPES.items())
             raise ValueError(f"Invalid room_type {room_type}. Valid types: {valid}")
+        if room_type == 1 and not invite:
+            raise ValueError("A one-to-one conversation needs invite, the user ID of the other person.")
         client = get_client()
         post_data: dict[str, Any] = {"roomType": room_type, "roomName": name}
         if invite:
@@ -1346,6 +1355,234 @@ def _register_pin_and_reminder_destructive_tools(mcp: FastMCP) -> None:
         return f"Reminder for message {message_id} removed."
 
 
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_PARTICIPANT_SOURCES = ("users", "groups", "circles", "emails", "federated_users")
+_ROLE_TYPES = {"owner": 1, "moderator": 2, "user": 3}
+
+# The endpoint behind each update_conversation argument
+_CONVERSATION_FIELDS = {"name": "name", "description": "description", "read-only": "read_only", "public": "public"}
+
+
+async def _participant(token: str, attendee_id: int) -> dict[str, Any]:
+    data: list[dict[str, Any]] = await get_client().ocs_get(f"{_ROOM_API}/{token}/participants") or []
+    found = next((p for p in data if p.get("attendeeId") == attendee_id), None)
+    if found is None:
+        raise ValueError(
+            f"No participant with attendee ID {attendee_id} in conversation {token} (see get_participants)."
+        )
+    return found
+
+
+async def _apply_conversation_field(token: str, field: str, value: Any) -> dict[str, Any]:
+    client = get_client()
+    path = f"{_ROOM_API}/{token}"
+    if field == "name":
+        data = await client.ocs_put(path, data={"roomName": value})
+    elif field == "description":
+        data = await client.ocs_put(f"{path}/description", data={"description": value})
+    elif field == "read-only":
+        data = await client.ocs_put(f"{path}/read-only", data={"state": int(value)})
+    else:
+        data = await (client.ocs_post(f"{path}/public") if value else client.ocs_delete(f"{path}/public"))
+    return cast(dict[str, Any], data)
+
+
+async def _supports_owners() -> bool:
+    capabilities = await get_client().ocs_get("cloud/capabilities")
+    features = capabilities.get("capabilities", {}).get("spreed", {}).get("features", [])
+    return "promote-demote-owner" in features
+
+
+async def _change_guest_role(path: str, attendee_id: int, current: int, role: str) -> None:
+    """Guests and email invitees switch between guest (4) and guest moderator (6); they cannot own."""
+    if role == "owner":
+        raise ValueError("Only users of this Nextcloud can be owners; guests can be made moderator or user.")
+    client = get_client()
+    if role == "moderator" and current != 6:
+        await client.ocs_post(path, data={"attendeeId": attendee_id})
+    elif role == "user" and current == 6:
+        await client.ocs_delete(f"{path}?attendeeId={attendee_id}")
+
+
+async def _change_role(token: str, participant: dict[str, Any], role: str) -> None:
+    """Promote or demote to the role, picking the request Talk needs for the current one."""
+    client = get_client()
+    path = f"{_ROOM_API}/{token}/moderators"
+    attendee_id = participant["attendeeId"]
+    current = int(participant.get("participantType", 3))
+    actor_type = participant.get("actorType")
+    if actor_type in ("groups", "circles"):
+        raise ValueError("Groups and teams in a conversation have no role; change the roles of their members instead.")
+    if current in (4, 6):  # guest, guest moderator
+        await _change_guest_role(path, attendee_id, current, role)
+        return
+    if role == "owner" and actor_type != "users":
+        raise ValueError("Only users of this Nextcloud can be owners.")
+    target = _ROLE_TYPES[role]
+    if current == target or (target == 3 and current == 5):
+        return
+    if 1 in (target, current) and not await _supports_owners():
+        # Talk 24 ignores the owner level and would make them a moderator instead
+        raise NextcloudError("Adding or demoting owners needs Talk 25 (Nextcloud 35) or newer", 400)
+    if target == 1:
+        await client.ocs_post(path, data={"attendeeId": attendee_id, "participantType": 1})
+    elif current == 1:
+        # Only Talk 25 can demote an owner, to the level it is given
+        await client.ocs_delete(f"{path}?attendeeId={attendee_id}&participantType={target}")
+    elif target == 2:
+        await client.ocs_post(path, data={"attendeeId": attendee_id})
+    else:
+        await client.ocs_delete(f"{path}?attendeeId={attendee_id}")
+
+
+def _register_conversation_admin_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.WRITE)
+    async def update_conversation(
+        token: str,
+        name: str | None = None,
+        description: str | None = None,
+        read_only: bool | None = None,
+        public: bool | None = None,
+    ) -> str:
+        """Change a conversation for everyone in it. Needs moderator rights.
+
+        Only the fields you pass change, one request each; if one fails, the error
+        names it and the fields already changed before it.
+
+        Args:
+            token: The conversation token.
+            name: New name, up to 255 characters.
+            description: New description, up to 2000 characters; an empty string
+                removes it.
+            read_only: True to stop everyone from writing (moderators included);
+                also ends a running call.
+            public: True to let anyone with the link join; fails when the instance
+                requires passwords for public conversations, and for one-to-one,
+                note-to-self and breakout conversations. False makes it invite only
+                and removes everyone who joined through the link, so it needs the
+                destructive permission level.
+
+        Returns:
+            JSON with the conversation afterwards.
+        """
+        current = get_permission_level()
+        if public is False and not current.includes(PermissionLevel.DESTRUCTIVE):
+            raise PermissionDeniedError("update_conversation with public=false", PermissionLevel.DESTRUCTIVE, current)
+        fields = {"name": name, "description": description, "read-only": read_only, "public": public}
+        steps = [(field, value) for field, value in fields.items() if value is not None]
+        if not steps:
+            raise ValueError("Pass at least one field to change.")
+        room: dict[str, Any] = {}
+        applied: list[str] = []
+        for field, value in steps:
+            try:
+                room = await _apply_conversation_field(token, field, value)
+            except NextcloudError as e:
+                done = f" ({', '.join(_CONVERSATION_FIELDS[f] for f in applied)} already changed)" if applied else ""
+                raise NextcloudError(f"{e}. Failed at {_CONVERSATION_FIELDS[field]}{done}", e.status_code) from e
+            applied.append(field)
+        return json.dumps(_format_conversation(room), ensure_ascii=False)
+
+
+def _register_participant_admin_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def add_participant(token: str, participant: str, source: str = "users") -> str:
+        """Add someone to a conversation. Needs moderator rights; adding someone twice changes nothing.
+
+        Args:
+            token: The conversation token.
+            participant: Who to add: a user ID, group ID, team (circle) ID, email
+                address or federated cloud ID, matching source.
+            source: "users" (default), "groups" (adds every member), "circles"
+                (a team), "emails" (invites a guest by email) or
+                "federated_users" (someone on another server, when federation is
+                enabled). One-to-one and note-to-self conversations take nobody.
+
+        Returns:
+            Confirmation message; get_participants lists attendee IDs.
+        """
+        if source not in _PARTICIPANT_SOURCES:
+            raise ValueError(f"Invalid source '{source}'. Must be one of: {', '.join(_PARTICIPANT_SOURCES)}")
+        if source == "emails" and not _EMAIL.match(participant):
+            # Talk accepts any text here and tries to send it an invitation
+            raise ValueError(f"'{participant}' is not an email address.")
+        data = {"newParticipant": participant, "source": source}
+        await get_client().ocs_post(f"{_ROOM_API}/{token}/participants", data=data)
+        return f"Added {source[:-1] if source != 'federated_users' else 'federated user'} {participant} to {token}."
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_participant_role(token: str, attendee_id: int, role: str) -> str:
+        """Make a participant owner, moderator or plain user. Needs moderator rights (owner rights for owners).
+
+        Moderators manage the conversation and its participants. Owners are
+        moderators nobody can remove; only owners can make someone owner or demote
+        an owner, and an owner can step down to moderator. Owners need Talk 25
+        (Nextcloud 35) and exist only in group and public conversations. Guests can
+        only be moderator or user, groups and teams have no role, and the last
+        moderator cannot be demoted.
+
+        Args:
+            token: The conversation token.
+            attendee_id: The participant's attendee ID, from get_participants.
+            role: "owner", "moderator" or "user".
+
+        Returns:
+            JSON with the participant afterwards.
+        """
+        role = role.strip().lower()
+        if role not in _ROLE_TYPES:
+            raise ValueError(f"Invalid role '{role}'. Must be one of: {', '.join(_ROLE_TYPES)}")
+        await _change_role(token, await _participant(token, attendee_id), role)
+        return json.dumps(_format_participant(await _participant(token, attendee_id)), ensure_ascii=False)
+
+
+def _register_conversation_admin_destructive_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def remove_participant(token: str, attendee_id: int) -> str:
+        """Remove someone from a conversation. Needs moderator rights; owners cannot be removed.
+
+        Demote an owner to moderator first (set_participant_role). Removing
+        yourself is leaving: it deletes the conversation when you were the only
+        one in it, and is refused when you are its last moderator.
+
+        Args:
+            token: The conversation token.
+            attendee_id: The participant's attendee ID, from get_participants.
+
+        Returns:
+            Confirmation message.
+        """
+        await get_client().ocs_delete(f"{_ROOM_API}/{token}/attendees?attendeeId={attendee_id}")
+        return f"Removed attendee {attendee_id} from {token}."
+
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def delete_conversation(token: str) -> str:
+        """Delete a conversation with all its messages for everyone. Needs moderator rights.
+
+        One-to-one conversations cannot be deleted; leave them with leave_conversation.
+
+        Args:
+            token: The conversation token.
+
+        Returns:
+            Confirmation message.
+        """
+        try:
+            await get_client().ocs_delete(f"{_ROOM_API}/{token}")
+        except NextcloudError as e:
+            if e.status_code != 400:
+                raise
+            raise NextcloudError(
+                f"{e}: this conversation cannot be deleted; one-to-one ones can only be left", 400
+            ) from e
+        return f"Conversation {token} deleted."
+
+
 def register(mcp: FastMCP) -> None:
     """Register Talk tools with the MCP server."""
     _register_read_tools(mcp)
@@ -1359,3 +1596,6 @@ def register(mcp: FastMCP) -> None:
     _register_conversation_settings_tools(mcp)
     _register_pin_and_reminder_tools(mcp)
     _register_pin_and_reminder_destructive_tools(mcp)
+    _register_conversation_admin_tools(mcp)
+    _register_participant_admin_tools(mcp)
+    _register_conversation_admin_destructive_tools(mcp)

@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 192 Tools Across 24 Nextcloud Apps
+## 197 Tools Across 24 Nextcloud Apps
 
-A 193rd tool, `upload_file_from_path`, is registered only when the operator sets
+A 198th tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -49,7 +49,7 @@ A 193rd tool, `upload_file_from_path`, is registered only when the operator sets
 | [User Status](#user-status) | get, set, clear status | OCS |
 | [Notifications](#notifications) | list, dismiss one, dismiss all | OCS |
 | [Activity](#activity) | get activity feed with filtering | OCS |
-| [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items, pins, reminders, personal settings | OCS |
+| [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items, pins, reminders, personal settings, participant and conversation management | OCS |
 | [Talk Polls](#talk-polls) | get, create, vote, close polls | OCS |
 | [Announcements](#announcements) | list, create, delete announcements | OCS |
 | [Calendar](#calendar) | list calendars, CRUD events | CalDAV |
@@ -321,7 +321,10 @@ level, as does disabling an account with `set_user_enabled`.
 | `search_mentions` | read | Find who can be mentioned, with the text to put in a message |
 | `list_message_reminders` | read | List your upcoming message reminders |
 | `send_message` | write | Send a message; can start a thread or post into one |
-| `create_conversation` | write | Create a new conversation |
+| `create_conversation` | write | Create a one-to-one, group or public conversation |
+| `update_conversation` | write | Rename, describe, lock (read-only) or open (public) a conversation (moderators); making it private needs `destructive` |
+| `add_participant` | write | Add a user, group, team, email guest or federated user (moderators) |
+| `set_participant_role` | write | Make a participant owner (Talk 25+), moderator or user |
 | `rename_thread` | write | Rename a thread |
 | `set_thread_notification_level` | write | Set your notification level for a thread |
 | `edit_message` | write | Edit a message (own ones, or any as a moderator of a group conversation; within 24 hours) |
@@ -333,6 +336,8 @@ level, as does disabling an account with `set_user_enabled`.
 | `set_message_reminder` | write | Get a notification about a message later |
 | `delete_message` | destructive | Delete a message |
 | `leave_conversation` | destructive | Leave a conversation |
+| `remove_participant` | destructive | Remove someone from a conversation (moderators) |
+| `delete_conversation` | destructive | Delete a conversation for everyone (moderators; one-to-one ones can only be left) |
 | `remove_reaction` | destructive | Take back your reaction to a message |
 | `unpin_message` | destructive | Unpin a message for everyone, or hide it only for you |
 | `remove_message_reminder` | destructive | Cancel a message reminder |
