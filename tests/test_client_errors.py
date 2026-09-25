@@ -111,3 +111,38 @@ class TestRaiseForOcsStatus:
         with pytest.raises(NextcloudError) as exc_info:
             _raise_for_ocs_status(_fake_response(400, _ocs_error_body("User already exists", 102)))
         assert exc_info.value.status_code == 400
+
+
+class TestOcsFieldErrorsAndHints:
+    def test_field_errors_are_listed_when_the_message_is_empty(self) -> None:
+        """PATCH cloud/users/{userId} answers 422 with an empty message and one error per field."""
+        body = _ocs_error_body("", 422)
+        body["ocs"]["data"] = {"errors": {"email": "Invalid email address", "groups": "Group x does not exist"}}
+        with pytest.raises(NextcloudError) as exc_info:
+            _raise_for_ocs_status(_fake_response(422, body), "OCS PATCH cloud/users/u")
+        assert str(exc_info.value) == (
+            "OCS PATCH cloud/users/u: email: Invalid email address; groups: Group x does not exist"
+        )
+        assert exc_info.value.status_code == 422
+
+    def test_message_wins_over_field_errors(self) -> None:
+        body = _ocs_error_body("Something specific", 400)
+        body["ocs"]["data"] = {"errors": {"email": "Invalid email address"}}
+        with pytest.raises(NextcloudError, match=r"^Something specific$"):
+            _raise_for_ocs_status(_fake_response(400, body))
+
+    @pytest.mark.parametrize("data", [[], {}, {"errors": {}}, {"errors": []}, {"errors": "text"}, None])
+    def test_no_usable_field_errors_falls_back_to_status(self, data: Any) -> None:
+        body = _ocs_error_body("", 422)
+        body["ocs"]["data"] = data
+        with pytest.raises(NextcloudError, match=r"^HTTP 422$"):
+            _raise_for_ocs_status(_fake_response(422, body))
+
+    def test_password_confirmation_gets_a_hint(self) -> None:
+        body = _ocs_error_body("Password confirmation is required", 403)
+        with pytest.raises(NextcloudError) as exc_info:
+            _raise_for_ocs_status(_fake_response(403, body))
+        message = str(exc_info.value)
+        assert message.startswith("Password confirmation is required. ")
+        assert "app password" in message
+        assert "allowed_no_password_confirmation_ranges" in message

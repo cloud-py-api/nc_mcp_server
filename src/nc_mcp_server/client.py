@@ -58,13 +58,38 @@ def _raise_for_ocs_status(response: niquests.Response, context: str = "") -> Non
     code = response.status_code or 0
     prefix = f"{context}: " if context else ""
     try:
-        ocs_message: str = response.json()["ocs"]["meta"]["message"]
+        ocs = response.json()["ocs"]
+        ocs_message: str = ocs["meta"]["message"] or _ocs_field_errors(ocs.get("data"))
+        if ocs_message == _CONFIRMATION_REQUIRED:
+            ocs_message += _CONFIRMATION_HINT
         if ocs_message:
             raise NextcloudError(f"{prefix}{ocs_message}", code)
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, AttributeError):
         pass
     detail = _STATUS_MESSAGES.get(code, f"HTTP {code}")
     raise NextcloudError(f"{prefix}{detail}", code)
+
+
+_CONFIRMATION_REQUIRED = "Password confirmation is required"
+_CONFIRMATION_HINT = (
+    ". Nextcloud does not count an app password as a confirmed password for this action; use the"
+    " account's login password, or have an admin add this server's address to"
+    " 'allowed_no_password_confirmation_ranges' in config.php"
+)
+
+
+def _ocs_field_errors(data: object) -> str:
+    """Join the per-field errors some OCS endpoints send in data.errors, or "" when there are none.
+
+    Endpoints that validate several fields at once (PATCH cloud/users/{userId}, for one) answer
+    422 with an empty meta message and {"errors": {"email": "Invalid email address", ...}}.
+    """
+    if not isinstance(data, dict):
+        return ""
+    errors = cast(dict[str, Any], data).get("errors")
+    if not isinstance(errors, dict) or not errors:
+        return ""
+    return "; ".join(f"{field}: {message}" for field, message in cast(dict[str, Any], errors).items())
 
 
 def _app_error_message(body: object) -> str:
