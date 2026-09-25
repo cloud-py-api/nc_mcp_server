@@ -44,7 +44,16 @@ async def _destroy_collective(nc_mcp: McpTestHelper, collective_id: int) -> None
     with contextlib.suppress(Exception):
         await nc_mcp.call("trash_collective", collective_id=collective_id)
     with contextlib.suppress(Exception):
-        await nc_mcp.call("delete_collective", collective_id=collective_id)
+        await nc_mcp.call("delete_collective", collective_id=collective_id, delete_team=True)
+
+
+async def _teams(nc_mcp: McpTestHelper) -> list[dict[str, Any]]:
+    teams: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circles", limit=200))
+    return teams
+
+
+async def _team_names(nc_mcp: McpTestHelper) -> list[str]:
+    return [str(team.get("name")) for team in await _teams(nc_mcp)]
 
 
 async def _cleanup_collectives(nc_mcp: McpTestHelper) -> None:
@@ -337,11 +346,30 @@ class TestTrashAndRestoreCollective:
             await _destroy_collective(nc_mcp, coll["id"])
 
     @pytest.mark.asyncio
-    async def test_permanent_delete(self, nc_mcp: McpTestHelper) -> None:
+    async def test_permanent_delete_with_team(self, nc_mcp: McpTestHelper) -> None:
         coll = await _create_collective(nc_mcp, "permdel")
-        await nc_mcp.call("trash_collective", collective_id=coll["id"])
-        result = await nc_mcp.call("delete_collective", collective_id=coll["id"])
-        assert "deleted" in result.lower()
+        try:
+            assert coll["name"] in await _team_names(nc_mcp)
+            await nc_mcp.call("trash_collective", collective_id=coll["id"])
+            result = await nc_mcp.call("delete_collective", collective_id=coll["id"], delete_team=True)
+            assert result.endswith("deleted permanently with its team.")
+            assert coll["name"] not in await _team_names(nc_mcp)
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_permanent_delete_keeps_the_team_by_default(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "keepteam")
+        try:
+            await nc_mcp.call("trash_collective", collective_id=coll["id"])
+            await nc_mcp.call("delete_collective", collective_id=coll["id"])
+            assert coll["name"] in await _team_names(nc_mcp)
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+            for team in await _teams(nc_mcp):
+                if team.get("name") == coll["name"]:
+                    with contextlib.suppress(Exception):
+                        await nc_mcp.call("delete_circle", circle_id=team["id"])
 
 
 class TestTrashAndRestorePage:
@@ -393,6 +421,260 @@ class TestTrashAndRestorePage:
             await nc_mcp.call("trash_collective_page", collective_id=coll["id"], page_id=page["id"])
             result = await nc_mcp.call("delete_collective_page", collective_id=coll["id"], page_id=page["id"])
             assert "deleted" in result.lower()
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+
+class TestEditPages:
+    @pytest.mark.asyncio
+    async def test_create_with_content(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "createtext")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page",
+                    collective_id=coll["id"],
+                    parent_id=landing_id,
+                    title="Notes",
+                    content="# Hi",
+                )
+            )
+            assert (page["parent_id"], page["size"]) == (landing_id, len("# Hi"))
+            read = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page["id"]))
+            assert read["content"] == "# Hi"
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_update_content_title_and_emoji(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "edit")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Draft"
+                )
+            )
+            updated = json.loads(
+                await nc_mcp.call(
+                    "update_collective_page",
+                    collective_id=coll["id"],
+                    page_id=page["id"],
+                    content="Grüße 🙂",
+                    title="Final",
+                    emoji="📘",
+                )
+            )
+            assert (updated["title"], updated["emoji"], updated["file_name"]) == ("Final", "📘", "Final.md")
+            assert updated["last_user_id"] == "admin"
+            read = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page["id"]))
+            assert read["content"] == "Grüße 🙂"
+            cleared = json.loads(
+                await nc_mcp.call("update_collective_page", collective_id=coll["id"], page_id=page["id"], emoji="")
+            )
+            assert cleared["emoji"] is None
+            reread = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page["id"]))
+            assert reread["emoji"] is None
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_update_landing_page_and_a_parent(self, nc_mcp: McpTestHelper) -> None:
+        """Pages with subpages are Readme.md files in their own folder."""
+        coll = await _create_collective(nc_mcp, "readme")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            parent = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Parent"
+                )
+            )
+            await nc_mcp.call("create_collective_page", collective_id=coll["id"], parent_id=parent["id"], title="Child")
+            for page_id, text in ((landing_id, "welcome"), (parent["id"], "parent text")):
+                await nc_mcp.call("update_collective_page", collective_id=coll["id"], page_id=page_id, content=text)
+                read = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=page_id))
+                assert read["content"] == text
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_invalid_updates(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "badedit")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            with pytest.raises(ToolError, match="at least one of content, title or emoji"):
+                await nc_mcp.call("update_collective_page", collective_id=coll["id"], page_id=landing_id)
+            with pytest.raises(ToolError, match="title cannot be empty"):
+                await nc_mcp.call("update_collective_page", collective_id=coll["id"], page_id=landing_id, title=" ")
+            with pytest.raises(ToolError, match="landing page cannot be renamed"):
+                await nc_mcp.call(
+                    "update_collective_page", collective_id=coll["id"], page_id=landing_id, content="x", title="New"
+                )
+            read = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=landing_id))
+            assert read["content"] != "x"  # refused before anything was written
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+
+class TestMovePages:
+    @pytest.mark.asyncio
+    async def test_move_and_copy_within_a_collective(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "move")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page",
+                    collective_id=coll["id"],
+                    parent_id=landing_id,
+                    title="Doc",
+                    content="body",
+                )
+            )
+            folder = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Folder"
+                )
+            )
+            moved = json.loads(
+                await nc_mcp.call(
+                    "move_collective_page", collective_id=coll["id"], page_id=page["id"], parent_id=folder["id"]
+                )
+            )
+            assert (moved["id"], moved["parent_id"]) == (page["id"], folder["id"])
+            copied = json.loads(
+                await nc_mcp.call(
+                    "move_collective_page",
+                    collective_id=coll["id"],
+                    page_id=page["id"],
+                    parent_id=landing_id,
+                    copy=True,
+                )
+            )
+            assert copied["id"] != page["id"]
+            assert copied["parent_id"] == landing_id
+            read = json.loads(await nc_mcp.call("get_collective_page", collective_id=coll["id"], page_id=copied["id"]))
+            assert read["content"] == "body"
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_copy_to_another_collective(self, nc_mcp: McpTestHelper) -> None:
+        source = await _create_collective(nc_mcp, "from")
+        target = await _create_collective(nc_mcp, "to")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, source["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page",
+                    collective_id=source["id"],
+                    parent_id=landing_id,
+                    title="Shared",
+                    content="x",
+                )
+            )
+            target_landing = await _get_landing_page_id(nc_mcp, target["id"])
+            copied = json.loads(
+                await nc_mcp.call(
+                    "move_collective_page",
+                    collective_id=source["id"],
+                    page_id=page["id"],
+                    parent_id=target_landing,
+                    to_collective_id=target["id"],
+                    copy=True,
+                )
+            )
+            assert (copied["title"], copied["parent_id"]) == ("Shared", target_landing)
+            assert copied["id"] != page["id"]
+            read = json.loads(
+                await nc_mcp.call("get_collective_page", collective_id=target["id"], page_id=copied["id"])
+            )
+            assert read["content"] == "x"
+            still = json.loads(await nc_mcp.call("get_collective_pages", collective_id=source["id"], limit=200))["data"]
+            assert "Shared" in [p["title"] for p in still]
+        finally:
+            await _destroy_collective(nc_mcp, source["id"])
+            await _destroy_collective(nc_mcp, target["id"])
+
+    @pytest.mark.asyncio
+    async def test_move_to_another_collective(self, nc_mcp: McpTestHelper) -> None:
+        source = await _create_collective(nc_mcp, "mvfrom")
+        target = await _create_collective(nc_mcp, "mvto")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, source["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=source["id"], parent_id=landing_id, title="Go"
+                )
+            )
+            moved = json.loads(
+                await nc_mcp.call(
+                    "move_collective_page",
+                    collective_id=source["id"],
+                    page_id=page["id"],
+                    parent_id=0,
+                    to_collective_id=target["id"],
+                )
+            )
+            assert (moved["id"], moved["title"]) == (page["id"], "Go")
+            source_pages = json.loads(await nc_mcp.call("get_collective_pages", collective_id=source["id"]))["data"]
+            assert "Go" not in [p["title"] for p in source_pages]
+        finally:
+            await _destroy_collective(nc_mcp, source["id"])
+            await _destroy_collective(nc_mcp, target["id"])
+
+    @pytest.mark.asyncio
+    async def test_page_cannot_go_under_its_own_child(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "loop")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            parent = json.loads(
+                await nc_mcp.call("create_collective_page", collective_id=coll["id"], parent_id=landing_id, title="Up")
+            )
+            child = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page", collective_id=coll["id"], parent_id=parent["id"], title="Down"
+                )
+            )
+            with pytest.raises(ToolError):
+                await nc_mcp.call(
+                    "move_collective_page", collective_id=coll["id"], page_id=parent["id"], parent_id=child["id"]
+                )
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+
+class TestSearchPages:
+    @pytest.mark.asyncio
+    async def test_search_answers_with_pages(self, nc_mcp: McpTestHelper) -> None:
+        """Results depend on a background indexing job, so only the request and its shape are checked."""
+        coll = await _create_collective(nc_mcp, "search")
+        try:
+            result = json.loads(await nc_mcp.call("search_collective_pages", collective_id=coll["id"], query="welcome"))
+            assert isinstance(result, list)
+        finally:
+            await _destroy_collective(nc_mcp, coll["id"])
+
+    @pytest.mark.asyncio
+    async def test_recent_pages_include_an_edited_one(self, nc_mcp: McpTestHelper) -> None:
+        coll = await _create_collective(nc_mcp, "recent")
+        try:
+            landing_id = await _get_landing_page_id(nc_mcp, coll["id"])
+            page = json.loads(
+                await nc_mcp.call(
+                    "create_collective_page",
+                    collective_id=coll["id"],
+                    parent_id=landing_id,
+                    title="Fresh",
+                    content="new",
+                )
+            )
+            recent = json.loads(await nc_mcp.call("list_recent_collective_pages", limit=100))
+            match = next(p for p in recent if p["id"] == page["id"])
+            assert match["collective_id"] == coll["id"]
+            only = json.loads(await nc_mcp.call("list_recent_collective_pages", query="Fresh", limit=100))
+            assert page["id"] in [p["id"] for p in only]
         finally:
             await _destroy_collective(nc_mcp, coll["id"])
 
