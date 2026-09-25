@@ -76,6 +76,8 @@ jobs:
           # enable/disable only pass for exempted IPs. Test requests reach the container from the network gateway.
           NC_GATEWAY=$(docker inspect $NC_CONTAINER --format '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}')
           $OCC "php occ config:system:set allowed_no_password_confirmation_ranges 0 --value=$NC_GATEWAY/32"
+          # The federated share tests share with users on the same server, which it reaches as http://localhost
+          $OCC "php occ config:system:set allow_local_remote_servers --value=true --type=boolean"
           $OCC "php occ app:install spreed" || echo "spreed already installed"
           $OCC "php occ app:install announcementcenter" || echo "announcementcenter already installed"
           $OCC "php occ app:install collectives" || echo "collectives already installed"
@@ -113,6 +115,7 @@ jobs:
           MAIL_RECIPIENT: test@localhost
           NC_CONTAINER: ${{ job.services.nextcloud.id }}
           MAIL_ACCOUNT_ID: "1"
+          NEXTCLOUD_FEDERATION_URL: http://localhost
         run: pytest tests/integration/ -v -m integration --ignore=tests/integration/test_session_cache.py --cov=nc_mcp_server --cov-report=xml:coverage-integration.xml
 
       - name: Upload coverage
