@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..client import NextcloudError
 from ..permissions import PermissionLevel, require_permission
-from ..state import get_client
+from ..state import get_client, get_config
 
 API = "apps/collectives/api/v1.0"
 
@@ -488,10 +488,319 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         return f"Page {page_id} deleted permanently."
 
 
+_COLOR = re.compile(r"^#?[0-9A-Fa-f]{6}$")
+
+
+def _color(color: str) -> str:
+    """Collectives stores tag colors as six hex digits without the "#"."""
+    if not _COLOR.match(color):
+        raise ValueError(f'Invalid color \'{color}\'; use six hex digits such as "FF8800" or "#FF8800".')
+    return color.lstrip("#").upper()
+
+
+def _tag_name(name: str) -> str:
+    """Collectives answers a blank or over-long name, or a rename onto another tag's name, with a server error."""
+    name = name.strip()
+    if not name or len(name) > 250:
+        raise ValueError("A tag name needs 1 to 250 characters.")
+    return name
+
+
+async def _tags(collective_id: int) -> list[dict[str, Any]]:
+    data = await get_client().ocs_get(f"{API}/collectives/{collective_id}/tags")
+    return cast(list[dict[str, Any]], data.get("tags", []))
+
+
+def _format_tag(tag: dict[str, Any]) -> dict[str, Any]:
+    return {"id": tag.get("id"), "name": tag.get("name", ""), "color": tag.get("color", "")}
+
+
+def _format_share(share: dict[str, Any]) -> dict[str, Any]:
+    token = share.get("token", "")
+    return {
+        "token": token,
+        "page_id": share.get("pageId") or None,
+        "editable": share.get("editable", False),
+        "has_password": share.get("hasPassword", False),
+        "owner": share.get("owner", ""),
+        # The index.php form works whether or not the server has pretty URLs set up
+        "url": f"{get_config().nextcloud_url.rstrip('/')}/index.php/apps/collectives/p/{token}",
+    }
+
+
+async def _share_page_id(collective_id: int, token: str) -> int:
+    """The share endpoints need the page a link is for, which the caller may not have at hand."""
+    shares: list[dict[str, Any]] = await get_client().ocs_get(_share_path(collective_id, 0)) or []
+    found = next((s for s in shares if s.get("token") == token), None)
+    if found is None:
+        raise ValueError(f"None of your links in collective {collective_id} has the token {token}.")
+    return int(found.get("pageId") or 0)
+
+
+def _share_path(collective_id: int, page_id: int, token: str = "") -> str:
+    base = f"{API}/collectives/{collective_id}" + (f"/pages/{page_id}" if page_id else "")
+    return f"{base}/shares" + (f"/{token}" if token else "")
+
+
+def _register_tag_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_collective_tags(collective_id: int) -> str:
+        """List a collective's page tags. Each collective has its own set.
+
+        Args:
+            collective_id: The numeric collective ID.
+
+        Returns:
+            JSON list of tags with id, name and color. Pages list their tag IDs
+            under "tags".
+        """
+        data = await get_client().ocs_get(f"{API}/collectives/{collective_id}/tags")
+        return json.dumps([_format_tag(t) for t in data.get("tags", [])], ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE)
+    @require_permission(PermissionLevel.WRITE)
+    async def create_collective_tag(collective_id: int, name: str, color: str = "0082C9") -> str:
+        """Create a page tag in a collective.
+
+        Args:
+            collective_id: The numeric collective ID.
+            name: The tag's name.
+            color: Six hex digits, with or without "#" (default "0082C9", Nextcloud blue).
+
+        Returns:
+            JSON with the new tag (id, name, color).
+        """
+        body = {"name": _tag_name(name), "color": _color(color)}
+        data = await get_client().ocs_post_json(f"{API}/collectives/{collective_id}/tags", json_data=body)
+        return json.dumps(_format_tag(data["tag"]), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def update_collective_tag(
+        collective_id: int, tag_id: int, name: str | None = None, color: str | None = None
+    ) -> str:
+        """Rename a collective's page tag or change its color; pages keep it.
+
+        Args:
+            collective_id: The numeric collective ID.
+            tag_id: The tag's ID, from list_collective_tags.
+            name: New name.
+            color: New color, six hex digits with or without "#".
+
+        Returns:
+            JSON with the tag afterwards.
+        """
+        if name is None and color is None:
+            raise ValueError("Pass name, color or both.")
+        # Collectives wants both fields, so the current ones fill in what is not changing
+        tags = await _tags(collective_id)
+        current = next((t for t in tags if t.get("id") == tag_id), None)
+        if current is None:
+            raise ValueError(f"No tag with ID {tag_id} in collective {collective_id} (see list_collective_tags).")
+        new_name = current.get("name", "") if name is None else _tag_name(name)
+        if any(t.get("name") == new_name and t.get("id") != tag_id for t in tags):
+            raise ValueError(f"The collective already has a tag named '{new_name}'.")
+        body = {"name": new_name, "color": current.get("color", "") if color is None else _color(color)}
+        data = await get_client().ocs_put_json(f"{API}/collectives/{collective_id}/tags/{tag_id}", json_data=body)
+        return json.dumps(_format_tag(data["tag"]), ensure_ascii=False)
+
+
+def _register_page_tag_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_collective_page_tags(collective_id: int, page_id: int, tag_ids: list[int]) -> str:
+        """Set which of the collective's tags a page has; tags left out are taken off.
+
+        Args:
+            collective_id: The numeric collective ID.
+            page_id: The numeric page ID.
+            tag_ids: The complete list of tag IDs, from list_collective_tags; []
+                removes all.
+
+        Returns:
+            JSON with the page afterwards, its tag IDs under "tags".
+        """
+        client = get_client()
+        existing = {int(t["id"]) for t in await _tags(collective_id)}
+        wanted = list(dict.fromkeys(int(t) for t in tag_ids))
+        unknown = [t for t in wanted if t not in existing]
+        if unknown:
+            raise ValueError(f"No tag with ID {', '.join(map(str, unknown))} in collective {collective_id}.")
+        page_path = f"{API}/collectives/{collective_id}/pages/{page_id}"
+        page: dict[str, Any] = (await client.ocs_get(page_path))["page"]
+        # A deleted tag's ID can linger on a page; Collectives refuses to remove it but drops it on the next change
+        current = [int(t) for t in page.get("tags", []) if int(t) in existing]
+        for tag_id in wanted:
+            if tag_id not in current:
+                page = (await client.ocs_put_json(f"{page_path}/tags/{tag_id}", json_data={}))["page"]
+        for tag_id in current:
+            if tag_id not in wanted:
+                page = (await client.ocs_delete(f"{page_path}/tags/{tag_id}"))["page"]
+        return json.dumps(_format_page(page), default=str)
+
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_collective_page_attachments(collective_id: int, page_id: int) -> str:
+        """List the files attached to a page: those in its attachments folder (images and files embedded in
+        or linked from it) and, for a folder page (one with subpages, a shared page or the landing page),
+        other files next to it. Trashed ones are not listed.
+
+        Args:
+            collective_id: The numeric collective ID.
+            page_id: The numeric page ID.
+
+        Returns:
+            JSON list of attachments with id, name, mimetype, size, timestamp,
+            type ("text" for the attachments folder, "folder" for files next to
+            the page) and path (usable with get_file).
+        """
+        data = await get_client().ocs_get(f"{API}/collectives/{collective_id}/pages/{page_id}/attachments")
+        return json.dumps(
+            [
+                {
+                    "id": a.get("id"),
+                    "name": a.get("name", ""),
+                    "mimetype": a.get("mimetype", ""),
+                    "size": a.get("filesize"),
+                    "timestamp": a.get("timestamp"),
+                    "type": a.get("type", ""),
+                    "path": str(a.get("path") or "").lstrip("/"),
+                }
+                for a in data.get("attachments", [])
+            ],
+            ensure_ascii=False,
+        )
+
+
+def _register_share_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READONLY)
+    @require_permission(PermissionLevel.READ)
+    async def list_collective_shares(collective_id: int) -> str:
+        """List your public links to a collective and to its single pages; other members' links are not shown.
+
+        Args:
+            collective_id: The numeric collective ID.
+
+        Returns:
+            JSON list of shares with token, page_id (null for a link to the whole
+            collective; a link made from the landing page shows the landing
+            page's ID), editable, has_password, owner and url.
+        """
+        data: list[dict[str, Any]] = await get_client().ocs_get(_share_path(collective_id, 0)) or []
+        return json.dumps([_format_share(share) for share in data], ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE)
+    @require_permission(PermissionLevel.WRITE)
+    async def share_collective(collective_id: int, page_id: int = 0, editable: bool = False, password: str = "") -> str:
+        """Create a public link to a collective, or to one page and its subpages. Anyone with the link can read.
+
+        Needs share rights in the collective. Sharing a page without subpages turns
+        it into a folder page (its file becomes <title>/Readme.md, the page ID stays),
+        and sharing the landing page shares the whole collective. Deleting the
+        collective's link leaves page links in place.
+
+        Args:
+            collective_id: The numeric collective ID.
+            page_id: A page to share on its own (default 0 = the whole collective).
+            editable: Let people with the link edit too (default false). This needs
+                your edit rights and is ignored when the collective does not let
+                regular members edit; if it fails, the link exists read-only.
+            password: Optional password the link asks for.
+
+        Returns:
+            JSON with the share, including its url.
+        """
+        client = get_client()
+        body = {"password": password} if password else {}
+        share: dict[str, Any] = await client.ocs_post_json(_share_path(collective_id, page_id), json_data=body)
+        if editable:
+            try:
+                share = await client.ocs_put_json(
+                    _share_path(collective_id, page_id, share["token"]), json_data={"editable": True}
+                )
+            except NextcloudError as e:
+                raise NextcloudError(
+                    f"{str(e).rstrip('.')}. The link {share['token']} was created read-only; delete it or leave it.",
+                    e.status_code,
+                ) from e
+        return json.dumps(_format_share(share), ensure_ascii=False)
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def update_collective_share(
+        collective_id: int, token: str, editable: bool, page_id: int | None = None, password: str | None = None
+    ) -> str:
+        """Change whether a public link lets people edit, and its password. Needs edit rights in the collective.
+
+        Args:
+            collective_id: The numeric collective ID.
+            token: The share token, from list_collective_shares.
+            editable: Whether people with the link may edit.
+            page_id: The page the link is for, 0 for the whole collective (default:
+                looked up from the token).
+            password: A new password; an empty string removes it; leave out to keep it.
+
+        Returns:
+            JSON with the share afterwards.
+        """
+        body: dict[str, Any] = {"editable": editable}
+        if password is not None:
+            body["password"] = password
+        page = await _share_page_id(collective_id, token) if page_id is None else page_id
+        share = await get_client().ocs_put_json(_share_path(collective_id, page, token), json_data=body)
+        return json.dumps(_format_share(share), ensure_ascii=False)
+
+
+def _register_sharing_destructive_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def delete_collective_tag(collective_id: int, tag_id: int) -> str:
+        """Delete a collective's page tag; pages lose it.
+
+        Args:
+            collective_id: The numeric collective ID.
+            tag_id: The tag's ID, from list_collective_tags.
+
+        Returns:
+            Confirmation message.
+        """
+        client = get_client()
+        # Collectives leaves a deleted tag's ID on its pages, so it is taken off them first
+        pages: list[dict[str, Any]] = (await client.ocs_get(f"{API}/collectives/{collective_id}/pages"))["pages"]
+        for page in pages:
+            if tag_id in page.get("tags", []):
+                await client.ocs_delete(f"{API}/collectives/{collective_id}/pages/{page['id']}/tags/{tag_id}")
+        await client.ocs_delete(f"{API}/collectives/{collective_id}/tags/{tag_id}")
+        return f"Tag {tag_id} deleted."
+
+    @mcp.tool(annotations=DESTRUCTIVE)
+    @require_permission(PermissionLevel.DESTRUCTIVE)
+    async def delete_collective_share(collective_id: int, token: str, page_id: int | None = None) -> str:
+        """Remove a public link; it stops working at once.
+
+        Args:
+            collective_id: The numeric collective ID.
+            token: The share token, from list_collective_shares.
+            page_id: The page the link is for, 0 for the whole collective (default:
+                looked up from the token).
+
+        Returns:
+            Confirmation message.
+        """
+        page = await _share_page_id(collective_id, token) if page_id is None else page_id
+        await get_client().ocs_delete(_share_path(collective_id, page, token))
+        return f"Share {token} deleted."
+
+
 def register(mcp: FastMCP) -> None:
     """Register Collectives tools with the MCP server."""
     _register_read_tools(mcp)
     _register_search_tools(mcp)
     _register_write_tools(mcp)
     _register_page_edit_tools(mcp)
+    _register_tag_tools(mcp)
+    _register_page_tag_tools(mcp)
+    _register_share_tools(mcp)
     _register_destructive_tools(mcp)
+    _register_sharing_destructive_tools(mcp)
