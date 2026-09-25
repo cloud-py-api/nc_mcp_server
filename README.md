@@ -266,8 +266,8 @@ call; the body is streamed in chunks rather than loaded into memory.
 `update_user` has Nextcloud validate every field before applying any of them. Users can change their own
 display name, email, language and password with it; Nextcloud 34 and 35 only accept the underlying call from
 admins and sub-admins, so for a regular user's own account the tool sets those fields one at a time instead,
-without that all-or-nothing check. Passing `groups` or `subadmin_groups` needs the `destructive` level, as
-does disabling an account with `set_user_enabled`.
+without that all-or-nothing check. Passing `password`, `groups` or `subadmin_groups` needs the `destructive`
+level, as does disabling an account with `set_user_enabled`.
 
 ### Groups
 

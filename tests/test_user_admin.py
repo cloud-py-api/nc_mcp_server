@@ -81,12 +81,14 @@ class TestUpdateUser:
             await _call(mcp, "update_user", user_id="someone")
         client.ocs_patch_json.assert_not_awaited()
 
-    async def test_group_changes_need_the_destructive_level(self, mcp: FastMCP, client: MagicMock) -> None:
-        """Groups and sub-admin groups are complete lists, so passing them can remove memberships."""
+    async def test_risky_fields_need_the_destructive_level(self, mcp: FastMCP, client: MagicMock) -> None:
+        """A new password locks the old one out; group lists can remove memberships."""
         set_permission_level(PermissionLevel.WRITE)
-        for field in ("groups", "subadmin_groups"):
-            with pytest.raises(ToolError, match="requires 'destructive' permission"):
-                await _call(mcp, "update_user", user_id="someone", display_name="x", **{field: []})
+        no_groups: list[str] = []
+        risky: dict[str, object] = {"password": "pw", "groups": no_groups, "subadmin_groups": no_groups}
+        for field, value in risky.items():
+            with pytest.raises(ToolError, match=f"update_user with {field}' requires 'destructive' permission"):
+                await _call(mcp, "update_user", user_id="someone", display_name="x", **{field: value})
         client.ocs_patch_json.assert_not_awaited()
         await _call(mcp, "update_user", user_id="someone", display_name="x")
         client.ocs_patch_json.assert_awaited_once()
@@ -217,6 +219,13 @@ class TestGroups:
             {"id": "sales", "display_name": "Sales", "user_count": 4, "disabled_user_count": 1},
         ]
         assert result["pagination"] == {"count": 2, "offset": 4, "limit": 2, "has_more": True}
+
+    async def test_more_groups_than_limit_still_reports_more(self, mcp: FastMCP, client: MagicMock) -> None:
+        """Several group backends each apply the limit, so a page can exceed it."""
+        client.ocs_get.return_value = {"groups": [{"id": f"g{i}"} for i in range(3)]}
+        result = json.loads(await _call(mcp, "list_groups", limit=2))
+        assert result["pagination"]["count"] == 3
+        assert result["pagination"]["has_more"] is True
 
     async def test_group_id_is_encoded_twice(self, mcp: FastMCP, client: MagicMock) -> None:
         """Both endpoints urldecode() the already decoded ID, so a single encoding would lose "+" and "%"."""

@@ -224,6 +224,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
             display_name: New display name. An empty string resets it to the user ID.
             email: New primary email address. An empty string removes it.
             password: New password. Must satisfy the instance's password policy.
+                Needs the destructive permission level, since the old password is
+                gone afterwards.
             quota: Storage quota, e.g. "5 GB", "500 MB", a byte count, "none"
                 (unlimited) or "default".
             language: Language code, e.g. "en", "de", "fr".
@@ -254,8 +256,10 @@ def _register_write_tools(mcp: FastMCP) -> None:
         if not body:
             raise ValueError("Pass at least one field to change.")
         current = get_permission_level()
-        if ("groups" in body or "subadminGroups" in body) and not current.includes(PermissionLevel.DESTRUCTIVE):
-            raise PermissionDeniedError("update_user with groups", PermissionLevel.DESTRUCTIVE, current)
+        # These can lock someone out or remove access that cannot simply be given back
+        risky = [_TOOL_ARGS[key] for key in ("password", "groups", "subadminGroups") if key in body]
+        if risky and not current.includes(PermissionLevel.DESTRUCTIVE):
+            raise PermissionDeniedError(f"update_user with {', '.join(risky)}", PermissionLevel.DESTRUCTIVE, current)
         client = get_client()
         if groups is not None:
             await _refuse_own_admin_removal(client, user_id, groups)

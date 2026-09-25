@@ -36,6 +36,10 @@ def _register_read_tools(mcp: FastMCP) -> None:
     async def list_groups(search: str = "", limit: int = 50, offset: int = 0) -> str:
         """List Nextcloud groups. Requires admin rights (or delegated user administration).
 
+        Nextcloud applies limit and offset to each group backend separately, so with
+        more than one (LDAP and local groups, for example) a page can hold more than
+        limit groups, and paging by offset can repeat or skip some.
+
         Args:
             search: Optional text to filter groups by ID or display name.
             limit: Maximum number of groups to return (1-200, default 50).
@@ -59,7 +63,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
                     "count": len(groups),
                     "offset": offset,
                     "limit": limit,
-                    "has_more": len(groups) == limit,
+                    "has_more": len(groups) >= limit,
                 },
             },
             default=str,

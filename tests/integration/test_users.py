@@ -504,12 +504,13 @@ class TestSetUserEnabled:
 
 class TestUserAdminPermissions:
     @pytest.mark.asyncio
-    async def test_write_level_blocks_group_changes(self, nc_mcp_write: McpTestHelper) -> None:
+    async def test_write_level_blocks_risky_changes(self, nc_mcp_write: McpTestHelper) -> None:
         """Refused before any request, which is why a user that does not exist is enough here."""
         no_groups: list[str] = []
-        for field in ("groups", "subadmin_groups"):
+        risky: dict[str, object] = {"password": "Mcp-Unused-1!", "groups": no_groups, "subadmin_groups": no_groups}
+        for field, value in risky.items():
             with pytest.raises(ToolError, match="requires 'destructive' permission"):
-                await nc_mcp_write.call("update_user", user_id="mcp-test-nobody-xyz", **{field: no_groups})
+                await nc_mcp_write.call("update_user", user_id="mcp-test-nobody-xyz", **{field: value})
 
     @pytest.mark.asyncio
     async def test_read_only_blocks_update(self, nc_mcp_read_only: McpTestHelper) -> None:
