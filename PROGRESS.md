@@ -55,6 +55,7 @@
 - [x] Collectives tags, attachments and public links: list/create/update/delete_collective_tag, set_collective_page_tags, list_collective_page_attachments, list_collective_shares, share_collective, update_collective_share, delete_collective_share (2026-09-25)
 - [x] Received shares: list_shares takes shared_with_me (federated shares included), list_pending_shares, accept_share, decline_share; delete_share leaves a received share, federated ones too (2026-09-25)
 - [x] Activity search: get_activity takes search, start, end and actor on Nextcloud 35 (refused on older servers, which would ignore them) and returns an empty page instead of failing at the end of the feed; list_activity_filters, get_activity_counts (2026-09-26)
+- [x] search_files matches % and _ in the query literally instead of as database wildcards (2026-09-26)
 
 ### In Progress
 
@@ -80,7 +81,7 @@
 
 | Module | Tools | Tests |
 |--------|-------|-------|
-| Files | 10 | 165 |
+| Files | 10 | 166 |
 | Users | 7 | 66 |
 | Groups | 4 | 20 |
 | Notifications | 3 | 11 |
@@ -113,13 +114,13 @@
 | Client | — | 79 |
 | Config | — | 24 |
 | State | — | 2 |
-| File Helpers | — | 26 |
+| File Helpers | — | 36 |
 | File Reminders | 3 | 20 |
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **223** | **1664** |
+| **Total** | **223** | **1675** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
 `NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 222 tools.
