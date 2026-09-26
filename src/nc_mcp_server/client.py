@@ -1,5 +1,6 @@
 """HTTP client for Nextcloud REST/OCS/DAV APIs."""
 
+import asyncio
 import contextlib
 import logging
 import xml.etree.ElementTree as ET
@@ -223,6 +224,8 @@ class NextcloudClient:
         # A replaced session may still carry requests of concurrent calls; it is closed once they finish
         self._retired_sessions: list[niquests.AsyncSession] = []
         self._in_flight: dict[int, int] = {}
+        # One login at a time: calls that hit an expired session together share the reset
+        self._reset_lock = asyncio.Lock()
 
     async def _get_session(self) -> niquests.AsyncSession:
         if self._session is None:
@@ -242,15 +245,20 @@ class NextcloudClient:
         """
         await self._reset_session()
 
-    async def _reset_session(self) -> None:
+    async def _reset_session(self, stale: niquests.AsyncSession | None = None) -> None:
         """Replace the current session with a fresh one that logs in with Basic Auth.
 
-        The new session is set up before it takes over. The old one is closed right away when no
-        request is using it, otherwise when the last concurrent request sent through it finishes.
+        With stale, the session that failed, nothing happens when another call replaced it
+        meanwhile; without it, the login always happens. The new session is set up before it
+        takes over. The old one is closed right away when no request is using it, otherwise
+        when the last concurrent request sent through it finishes.
         """
-        session = self._build_session()
-        await self._init_session_auth(session)
-        old, self._session = self._session, session
+        async with self._reset_lock:
+            if stale is not None and self._session is not stale:
+                return
+            session = self._build_session()
+            await self._init_session_auth(session)
+            old, self._session = self._session, session
         if old is None:
             return
         if self._in_flight.get(id(old)):
@@ -305,9 +313,8 @@ class NextcloudClient:
         """
         if response.status_code != 401 or session.auth is not None:
             return False
-        if session is self._session:
-            log.debug("Session expired (401), re-authenticating")
-            await self._reset_session()
+        log.debug("Session expired (401), re-authenticating")
+        await self._reset_session(stale=session)
         return True
 
     async def _init_session_auth(self, session: niquests.AsyncSession) -> None:

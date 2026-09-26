@@ -2,7 +2,6 @@
 
 import contextlib
 import json
-import os
 import secrets
 import uuid
 from collections.abc import AsyncGenerator
@@ -205,16 +204,15 @@ class TestGroupShares:
 
 
 class TestFederatedShares:
-    """Federated shares to the same server, addressed the way the server reaches itself.
+    """Federated shares to a user on the same server.
 
-    NEXTCLOUD_FEDERATION_URL is that address when it differs from NEXTCLOUD_URL, as in CI where the tests reach
-    the container through a mapped port. The server needs allow_local_remote_servers to share with itself.
+    The server needs allow_local_remote_servers to share with itself, and must answer at NEXTCLOUD_URL from
+    inside too: it gives the recipient that address to fetch the file and send its answers to.
     """
 
     @staticmethod
     def _cloud_id(user_id: str) -> str:
-        base = os.environ.get("NEXTCLOUD_FEDERATION_URL") or get_config().nextcloud_url
-        return f"{user_id}@{base.rstrip('/')}"
+        return f"{user_id}@{get_config().nextcloud_url.rstrip('/')}"
 
     @pytest.mark.asyncio
     async def test_accept_and_leave(self, nc_mcp: McpTestHelper, recipient: Recipient) -> None:

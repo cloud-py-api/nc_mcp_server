@@ -147,12 +147,43 @@ class TestReplacedSessions:
         client, stale, renewed, _ = self._client(monkeypatch)
         client._session = renewed
         renewed.auth = None
-        reset = AsyncMock()
-        monkeypatch.setattr(client, "_reset_session", reset)
+        build = MagicMock()
+        monkeypatch.setattr(client, "_build_session", build)
         assert await client._should_retry_auth(_response(401), stale) is True
-        reset.assert_not_awaited()
-        assert await client._should_retry_auth(_response(401), renewed) is True
-        reset.assert_awaited_once()
+        build.assert_not_called()
+        assert client._session is renewed
+
+    @pytest.mark.asyncio
+    async def test_concurrent_401s_share_one_login(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client, expired, renewed, _ = self._client(monkeypatch)
+        login_started, finish_login = asyncio.Event(), asyncio.Event()
+
+        async def slow_login(session: object) -> None:
+            login_started.set()
+            await finish_login.wait()
+
+        build = MagicMock(return_value=renewed)
+        monkeypatch.setattr(client, "_build_session", build)
+        monkeypatch.setattr(client, "_init_session_auth", slow_login)
+        first = asyncio.create_task(client._should_retry_auth(_response(401), expired))
+        await login_started.wait()
+        second = asyncio.create_task(client._should_retry_auth(_response(401), expired))
+        await asyncio.sleep(0)
+        finish_login.set()
+        assert await first is True
+        assert await second is True
+        build.assert_called_once()
+        assert client._session is renewed
+
+    @pytest.mark.asyncio
+    async def test_renew_session_always_logs_in(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client, _, renewed, _ = self._client(monkeypatch)
+        client._session = renewed
+        fresh = MagicMock()
+        fresh.close = AsyncMock()
+        monkeypatch.setattr(client, "_build_session", lambda: fresh)
+        await client.renew_session()
+        assert client._session is fresh
 
     @pytest.mark.asyncio
     async def test_401_with_basic_auth_is_not_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
