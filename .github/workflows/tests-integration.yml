@@ -127,10 +127,10 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-      - name: Dump Nextcloud logs on failure
+      - name: Show Nextcloud errors on failure
         if: failure()
         run: |
-          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | tail -50 || echo "No logs found"
+          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | python scripts/nextcloud_errors.py || echo "No logs found"
 
   test-session-cache:
     name: Session cache (NC ${{ matrix.nextcloud-version }})
@@ -198,10 +198,10 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-      - name: Dump Nextcloud logs on failure
+      - name: Show Nextcloud errors on failure
         if: failure()
         run: |
-          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | tail -50 || echo "No logs found"
+          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | python scripts/nextcloud_errors.py || echo "No logs found"
 
   test-user-permissions:
     name: User permissions (NC ${{ matrix.nextcloud-version }})
@@ -280,7 +280,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-      - name: Dump Nextcloud logs on failure
+      - name: Show Nextcloud errors on failure
         if: failure()
         run: |
-          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | tail -50 || echo "No logs found"
+          docker exec ${{ job.services.nextcloud.id }} cat /var/www/html/data/nextcloud.log 2>/dev/null | python scripts/nextcloud_errors.py || echo "No logs found"
