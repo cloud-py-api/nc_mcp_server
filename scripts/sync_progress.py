@@ -71,11 +71,15 @@ def collected(path: str) -> int:
 
 def main() -> None:
     files = {str(p.relative_to("tests")) for p in Path("tests").rglob("test_*.py")}
-    mapped = {f for paths in ROWS.values() for f in paths}
+    assigned = [f for paths in ROWS.values() for f in paths]
+    twice = sorted({f for f in assigned if assigned.count(f) > 1})
+    if twice:
+        sys.exit(f"assigned to more than one row: {twice}")
+    mapped = set(assigned)
     if files - mapped or mapped - files:
         sys.exit(f"unmapped: {sorted(files - mapped)}; missing: {sorted(mapped - files)}")
     counts = {row: sum(collected(p) for p in paths) for row, paths in ROWS.items()}
-    text = Path("PROGRESS.md").read_text()
+    text = Path("PROGRESS.md").read_text(encoding="utf-8")
     for row, count in counts.items():
         pattern = re.compile(rf"^\| {re.escape(row)} \| ([^|]+) \| \d+ \|$", re.MULTILINE)
         if pattern.search(text):
@@ -96,7 +100,7 @@ def main() -> None:
         print(f"{row:18} {count}")
     print("total", tools, sum(counts.values()))
     if "--write" in sys.argv:
-        Path("PROGRESS.md").write_text(text)
+        Path("PROGRESS.md").write_text(text, encoding="utf-8")
 
 
 main()
