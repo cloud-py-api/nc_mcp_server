@@ -91,7 +91,7 @@
 | Talk Settings | 6 | 41 |
 | Talk Admin | 5 | 61 |
 | Talk Tags | 6 | 20 |
-| Activity | 3 | 58 |
+| Activity | 3 | 59 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
 | Announcements | 3 | 29 |
@@ -119,7 +119,7 @@
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **223** | **1657** |
+| **Total** | **223** | **1658** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
 `NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 222 tools.

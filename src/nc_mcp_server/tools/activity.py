@@ -236,7 +236,10 @@ def _register_filters_and_counts(mcp: FastMCP) -> None:
         Returns:
             JSON list of filters with "id" (the value for activity_filter) and "name".
         """
-        data = await get_client().ocs_get(f"{ACTIVITY_API}/filters")
+        try:
+            data = await get_client().ocs_get(f"{ACTIVITY_API}/filters")
+        except NextcloudError as e:
+            raise _explain(e, "all") from e
         return json.dumps([{"id": f.get("id", ""), "name": f.get("name", "")} for f in data])
 
     @mcp.tool(annotations=READONLY)

@@ -181,6 +181,11 @@ class TestFiltersAndCounts:
         assert json.loads(await _call(mcp, "list_activity_filters")) == [{"id": "all", "name": "All activities"}]
         client.ocs_get.assert_awaited_once_with(f"{API}/filters")
 
+    async def test_list_filters_without_the_app(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.ocs_get.side_effect = NO_ROUTE
+        with pytest.raises(ToolError, match="Activity app is not available"):
+            await _call(mcp, "list_activity_filters")
+
     async def test_counts(self, mcp: FastMCP, client: MagicMock) -> None:
         histogram = {
             "from": "2026-09-19",
