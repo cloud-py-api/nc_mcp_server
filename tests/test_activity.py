@@ -135,6 +135,26 @@ class TestFeed:
         assert client.ocs_get.await_args_list == [HISTOGRAM_PROBE, call(f"{API}/filters")] * 2
         client.ocs_get_with_headers.assert_not_awaited()
 
+    async def test_support_is_checked_again_after_an_hour(
+        self, mcp: FastMCP, client: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        now = [1000.0]
+        monkeypatch.setattr(activity.clock, "monotonic", lambda: now[0])
+        await _call(mcp, "get_activity", search="report")
+        now[0] += 3599
+        await _call(mcp, "get_activity", search="report")
+        now[0] += 2
+        await _call(mcp, "get_activity", search="report")
+        assert client.ocs_get.await_args_list == [HISTOGRAM_PROBE, HISTOGRAM_PROBE]
+
+    @pytest.mark.parametrize("bad", ["files/../../x", "a b", "", "files?x=1", "../filters"])
+    async def test_filter_ids_cannot_change_the_path(self, mcp: FastMCP, client: MagicMock, bad: str) -> None:
+        for tool in ("get_activity", "get_activity_counts"):
+            with pytest.raises(ToolError, match="Invalid activity_filter"):
+                await _call(mcp, tool, activity_filter=bad)
+        client.ocs_get.assert_not_awaited()
+        client.ocs_get_with_headers.assert_not_awaited()
+
     async def test_app_not_available(self, mcp: FastMCP, client: MagicMock) -> None:
         client.ocs_get.side_effect = NO_ROUTE
         with pytest.raises(ToolError, match="Activity app is not available"):

@@ -2,6 +2,7 @@
 
 import json
 import re
+import time as clock
 from datetime import UTC, date, datetime, time
 from typing import Any, cast
 
@@ -16,10 +17,15 @@ ACTIVITY_API = "apps/activity/api/v2/activity"
 
 _VALID_SORT = {"asc", "desc"}
 
-# Servers whose Activity app takes search, start/end and actor (Activity 8, shipped with Nextcloud 35).
-# Older versions ignore those parameters and return the unfiltered feed, so they are checked first. Only
-# support is remembered: a server without it may be upgraded while the MCP server runs.
-_SEARCH_SUPPORT: set[str] = set()
+# When each server's Activity app was last seen taking search, start/end and actor (Activity 8, shipped with
+# Nextcloud 35). Older versions ignore those parameters and return the unfiltered feed, so they are checked
+# first. Only support is remembered, and only for an hour: the app may be upgraded, downgraded or disabled
+# while the MCP server runs.
+_SEARCH_SUPPORT: dict[str, float] = {}
+_SEARCH_SUPPORT_TTL = 3600.0
+
+# Activity's filter ids are plain words; anything else would change the request's path
+_FILTER_ID = re.compile(r"[A-Za-z0-9_-]+")
 
 # Nextcloud's answer to a route that does not exist, as opposed to Activity's own 404 for an unknown filter
 _NO_ROUTE = "Invalid query"
@@ -73,6 +79,8 @@ def _stream(activity_filter: str, object_type: str, object_id: int) -> tuple[str
     Activity only narrows the feed to one object in its special "filter" stream and ignores the object with
     any other filter, while still clearing the notifications of the activities it returns.
     """
+    if not _FILTER_ID.fullmatch(activity_filter):
+        raise ValueError(f"Invalid activity_filter {activity_filter!r}. list_activity_filters lists the valid ones.")
     if bool(object_type) != bool(object_id):
         # Activity silently drops one without the other
         raise ValueError("object_type and object_id must be given together.")
@@ -105,7 +113,8 @@ async def _supports_search(client: NextcloudClient) -> bool:
     Activity 8 added them together with the histogram route, which older versions answer with
     Nextcloud's "Invalid query" for unknown routes, as they do when the app is not enabled at all.
     """
-    if client.base_url in _SEARCH_SUPPORT:
+    seen = _SEARCH_SUPPORT.get(client.base_url)
+    if seen is not None and clock.monotonic() - seen < _SEARCH_SUPPORT_TTL:
         return True
     try:
         await client.ocs_get(f"{ACTIVITY_API}/all/histogram", params={"days": "1"})
@@ -114,7 +123,7 @@ async def _supports_search(client: NextcloudClient) -> bool:
             raise
         await _require_app(client)
         return False
-    _SEARCH_SUPPORT.add(client.base_url)
+    _SEARCH_SUPPORT[client.base_url] = clock.monotonic()
     return True
 
 
