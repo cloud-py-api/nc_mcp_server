@@ -103,11 +103,20 @@ async def _stream_local_file(path: Path, chunk_size: int = _UPLOAD_CHUNK_SIZE) -
         await asyncio.to_thread(f.close)
 
 
+def _like_literal(text: str) -> str:
+    """Escape the LIKE wildcards % and _, and the backslash escape itself, so text matches as typed.
+
+    Nextcloud passes the search literal to the database's LIKE unchanged, and every database it
+    supports takes a backslash as the escape character.
+    """
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int, mimetype: str) -> str:
     """Build a WebDAV SEARCH request body."""
     where_parts: list[str] = []
     if query:
-        q = xml_escape(query)
+        q = xml_escape(_like_literal(query))
         where_parts.append(f"<d:like><d:prop><d:displayname/></d:prop><d:literal>%{q}%</d:literal></d:like>")
     if mimetype:
         m = xml_escape(mimetype if "%" in mimetype or "/" in mimetype else f"{mimetype}/%")
@@ -217,7 +226,8 @@ def _register_read_tools(mcp: FastMCP) -> None:
         At least one of query or mimetype must be provided.
 
         Args:
-            query: Filename search pattern. Matches anywhere in the filename.
+            query: Text to find anywhere in the file name, case-insensitive, taken literally
+                   (% and _ are not wildcards).
                    Example: "report" matches "quarterly-report.pdf", "report-2026.docx".
             path: Directory to search in (default: "/" for entire user folder).
                   Example: "Documents" to only search in Documents.

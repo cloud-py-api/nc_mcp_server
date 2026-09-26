@@ -431,6 +431,22 @@ class TestFileLifecycle:
 
 class TestSearchFiles:
     @pytest.mark.asyncio
+    async def test_wildcard_characters_are_literal(self, nc_mcp: McpTestHelper) -> None:
+        folder = f"{TEST_BASE_DIR}/wildcards"
+        await nc_mcp.create_test_dir()
+        await nc_mcp.create_test_dir(folder)
+        for name in ("a_b.txt", "axb.txt", "50%off.txt", "50xoff.txt"):
+            await nc_mcp.upload_test_file(f"{folder}/{name}", "x")
+
+        async def names(query: str) -> list[str]:
+            result = json.loads(await nc_mcp.call("search_files", query=query, path=folder))
+            return sorted(e["path"].rsplit("/", 1)[-1] for e in result["data"])
+
+        assert await names("a_b") == ["a_b.txt"]
+        assert await names("50%OFF") == ["50%off.txt"]
+        assert await names("off") == ["50%off.txt", "50xoff.txt"]
+
+    @pytest.mark.asyncio
     async def test_search_by_name(self, nc_mcp: McpTestHelper) -> None:
         await nc_mcp.create_test_dir()
         await nc_mcp.upload_test_file(f"{TEST_BASE_DIR}/searchable-doc.txt", "content")

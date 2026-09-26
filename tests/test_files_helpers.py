@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from nc_mcp_server.tools.files import _open_no_follow, _resolve_content_type, _resolve_local_upload_path
+from nc_mcp_server.tools.files import (
+    _build_search_xml,
+    _like_literal,
+    _open_no_follow,
+    _resolve_content_type,
+    _resolve_local_upload_path,
+)
 
 
 class TestResolveContentType:
@@ -182,3 +188,17 @@ class TestOpenNoFollow:
         # Not ELOOP — should propagate as-is, not the swap message
         with pytest.raises(FileNotFoundError):
             _open_no_follow(tmp_path / "nope.txt")
+
+
+class TestSearchLiteral:
+    @pytest.mark.parametrize(
+        ("text", "escaped"),
+        [("report", "report"), ("a_b", "a\\_b"), ("50%off", "50\\%off"), ("x\\y", "x\\\\y"), ("%_", "\\%\\_")],
+    )
+    def test_wildcards_are_escaped(self, text: str, escaped: str) -> None:
+        assert _like_literal(text) == escaped
+
+    def test_query_is_escaped_and_mimetype_keeps_its_wildcard(self) -> None:
+        body = _build_search_xml("admin", "a_b<", "/", 20, 0, "image")
+        assert "<d:literal>%a\\_b&lt;%</d:literal>" in body
+        assert "<d:literal>image/%</d:literal>" in body
