@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import niquests
 import pytest
 
-from nc_mcp_server.client import NextcloudClient
+from nc_mcp_server.client import NextcloudClient, NextcloudError
 from nc_mcp_server.config import Config
 
 
@@ -227,3 +227,27 @@ class TestOcsDelete:
         )
         fresh.close.assert_awaited_once()
         client._session.request.assert_not_awaited()  # type: ignore[union-attr]
+
+
+class TestOcsGetWithHeaders:
+    @pytest.mark.asyncio
+    async def test_returns_data_and_headers(self) -> None:
+        response = _response(200, [{"id": 1}])
+        response.headers["X-Activity-Last-Given"] = "5"
+        data, headers = await _client_returning(response).ocs_get_with_headers("apps/activity/api/v2/activity")
+        assert data == [{"id": 1}]
+        assert headers["x-activity-last-given"] == "5"
+
+    @pytest.mark.parametrize("status", [204, 304])
+    @pytest.mark.asyncio
+    async def test_no_body(self, status: int) -> None:
+        response = _response(status)
+        response.headers["X-Activity-Last-Given"] = "5"
+        data, headers = await _client_returning(response).ocs_get_with_headers("apps/activity/api/v2/activity")
+        assert data is None
+        assert headers["X-Activity-Last-Given"] == "5"
+
+    @pytest.mark.asyncio
+    async def test_errors_raise(self) -> None:
+        with pytest.raises(NextcloudError):
+            await _client_returning(_response(500)).ocs_get_with_headers("x")

@@ -61,7 +61,10 @@ def _raise_for_ocs_status(response: niquests.Response, context: str = "") -> Non
     try:
         ocs = response.json()["ocs"]
         ocs_message: str = (
-            ocs["meta"]["message"] or _ocs_field_errors(ocs.get("data")) or _ocs_error_code(code, ocs.get("data"))
+            ocs["meta"]["message"]
+            or _ocs_field_errors(ocs.get("data"))
+            or _ocs_data_message(ocs.get("data"))
+            or _ocs_error_code(code, ocs.get("data"))
         )
         if ocs_message == _CONFIRMATION_REQUIRED:
             ocs_message += _CONFIRMATION_HINT
@@ -93,6 +96,18 @@ def _ocs_error_code(status: int, data: object) -> str:
     if not isinstance(error, str) or not error:
         return ""
     return f"{_STATUS_MESSAGES.get(status, f'HTTP {status}')} ({error})"
+
+
+def _ocs_data_message(data: object) -> str:
+    """The message some endpoints put in data.message with an empty meta message, or "".
+
+    The Activity app, for one, answers an invalid search with 400 and
+    {"message": "Search term must be at least 2 characters long"}.
+    """
+    if not isinstance(data, dict):
+        return ""
+    message = cast(dict[str, Any], data).get("message")
+    return message if isinstance(message, str) else ""
 
 
 def _ocs_field_errors(data: object) -> str:
@@ -232,6 +247,11 @@ class NextcloudClient:
             self._session = self._build_session()
             await self._init_session_auth(self._session)
         return self._session
+
+    @property
+    def base_url(self) -> str:
+        """The Nextcloud server's URL this client talks to."""
+        return self._base_url
 
     @property
     def _session_is_cached(self) -> bool:
@@ -416,6 +436,17 @@ class NextcloudClient:
             return None
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
+
+    async def ocs_get_with_headers(self, path: str, params: dict[str, Any] | None = None) -> tuple[Any, Any]:
+        """Like ocs_get, but also return the response headers, which some apps page with."""
+        url = f"{self._base_url}/ocs/v2.php/{path}"
+        response = await self._do_request("GET", url, params=params or {})
+        _raise_for_ocs_status(response, f"OCS GET {path}")
+        # 304 Not Modified and 204 No Content carry no body
+        if response.status_code in (204, 304):
+            return None, response.headers
+        result: dict[str, Any] = response.json()  # type: ignore[assignment]
+        return result["ocs"]["data"], response.headers
 
     async def ocs_post(self, path: str, data: dict[str, Any] | None = None) -> Any:
         """Make an OCS POST request and return the data portion."""

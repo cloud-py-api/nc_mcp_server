@@ -174,3 +174,25 @@ class TestOcsErrorCode:
         body["ocs"]["data"] = {"error": "room"}
         with pytest.raises(NextcloudError, match=r"^Room not found$"):
             _raise_for_ocs_status(_fake_response(404, body))
+
+
+class TestOcsDataMessage:
+    def test_data_message_is_used_when_meta_is_empty(self) -> None:
+        """The Activity app puts its validation errors in data.message."""
+        body = _ocs_error_body("", 400)
+        body["ocs"]["data"] = {"message": "Search term must be at least 2 characters long"}
+        with pytest.raises(NextcloudError, match=r"^OCS GET x: Search term must be at least 2 characters long$"):
+            _raise_for_ocs_status(_fake_response(400, body), "OCS GET x")
+
+    def test_meta_message_wins(self) -> None:
+        body = _ocs_error_body("Invalid filter", 400)
+        body["ocs"]["data"] = {"message": "other"}
+        with pytest.raises(NextcloudError, match=r"^Invalid filter$"):
+            _raise_for_ocs_status(_fake_response(400, body))
+
+    @pytest.mark.parametrize("data", [{"message": ""}, {"message": 3}, []])
+    def test_no_usable_message(self, data: Any) -> None:
+        body = _ocs_error_body("", 400)
+        body["ocs"]["data"] = data
+        with pytest.raises(NextcloudError, match=r"^HTTP 400$"):
+            _raise_for_ocs_status(_fake_response(400, body))

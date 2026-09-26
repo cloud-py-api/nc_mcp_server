@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 220 Tools Across 24 Nextcloud Apps
+## 222 Tools Across 24 Nextcloud Apps
 
-A 221st tool, `upload_file_from_path`, is registered only when the operator sets
+A 223rd tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -48,7 +48,7 @@ A 221st tool, `upload_file_from_path`, is registered only when the operator sets
 | [Groups](#groups) | list groups and members, create, delete groups | OCS |
 | [User Status](#user-status) | get, set, clear status | OCS |
 | [Notifications](#notifications) | list, dismiss one, dismiss all | OCS |
-| [Activity](#activity) | get activity feed with filtering | OCS |
+| [Activity](#activity) | activity feed with filters, search by file, time and user, daily counts | OCS |
 | [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items, pins, reminders, personal settings and tags, participant and conversation management | OCS |
 | [Talk Polls](#talk-polls) | get, create, vote, close polls | OCS |
 | [Announcements](#announcements) | list, create, delete announcements | OCS |
@@ -305,7 +305,9 @@ level, as does disabling an account with `set_user_enabled`.
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `get_activity` | read | View recent activity with filtering, sorting, and pagination |
+| `get_activity` | read | View recent activity with filtering, sorting, and pagination; search by file path, time range and user (Nextcloud 35) |
+| `list_activity_filters` | read | List the activity filters this server offers |
+| `get_activity_counts` | read | Count activities per day over the last days (Nextcloud 35) |
 
 ### Talk
 
