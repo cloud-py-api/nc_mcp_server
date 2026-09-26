@@ -56,6 +56,7 @@
 - [x] Received shares: list_shares takes shared_with_me (federated shares included), list_pending_shares, accept_share, decline_share; delete_share leaves a received share, federated ones too (2026-09-25)
 - [x] Activity search: get_activity takes search, start, end and actor on Nextcloud 35 (refused on older servers, which would ignore them) and returns an empty page instead of failing at the end of the feed; list_activity_filters, get_activity_counts (2026-09-26)
 - [x] search_files matches % and _ in the query literally instead of as database wildcards (2026-09-26)
+- [x] update_circle_member_level explains when Circles cannot transfer ownership (SQLite or PostgreSQL before nextcloud/circles#2916) instead of passing on the database error (2026-09-26)
 
 ### In Progress
 
@@ -117,11 +118,11 @@
 | File Helpers | — | 36 |
 | File Reminders | 3 | 22 |
 | Forms | 25 | 34 |
-| Circles | 14 | 31 |
+| Circles | 14 | 37 |
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1781** |
+| **Total** | **223** | **1787** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.

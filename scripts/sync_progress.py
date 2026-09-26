@@ -53,7 +53,7 @@ ROWS: dict[str, list[str]] = {
     "File Helpers": ["test_files_helpers.py"],
     "File Reminders": ["integration/test_reminders.py", "test_reminders.py"],
     "Forms": ["integration/test_forms.py"],
-    "Circles": ["integration/test_circles.py"],
+    "Circles": ["integration/test_circles.py", "test_circles.py"],
     "Cospend": ["integration/test_cospend.py"],
     "Flow": ["integration/test_flows.py", "test_flows.py"],
 }
