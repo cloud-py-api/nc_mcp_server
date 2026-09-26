@@ -352,10 +352,13 @@ class TestMembers:
                 level="owner",
             )
         except ToolError as e:
-            if "FOR UPDATE" not in str(e):
+            if "cannot transfer ownership" not in str(e):
                 raise
-            # circles locks member rows with SELECT ... FOR UPDATE, which Nextcloud's SQLite platform rejects.
-            pytest.skip("circles cannot transfer ownership on SQLite")
+            # The refusal must leave the circle as it was
+            members = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
+            levels = {m.get("userId"): m["level"] for m in members}
+            assert (levels[get_config().user], levels[circle_peer]) == (9, 1)
+            pytest.skip("this server's Circles predates the ownership transfer fix (nextcloud/circles#2916)")
         members: list[dict[str, Any]] = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
         peer_level = next(m["level"] for m in members if m.get("userId") == circle_peer)
         caller_level = next(m["level"] for m in members if m.get("userId") == get_config().user)

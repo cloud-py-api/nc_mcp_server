@@ -6,6 +6,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
+from ..client import NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client
 
@@ -298,6 +299,8 @@ def _register_member_writes(mcp: FastMCP) -> None:
                 user's singleId or userId — use the "id" field from members).
             level: One of "member", "moderator", "admin", "owner". Promoting
                 someone to "owner" transfers ownership; the caller becomes admin.
+                Older Circles releases cannot transfer ownership on SQLite or
+                PostgreSQL; the tool then says so and nothing changes.
 
         Returns:
             JSON of the updated member (same shape as entries from
@@ -308,11 +311,28 @@ def _register_member_writes(mcp: FastMCP) -> None:
         if level not in MEMBER_LEVELS:
             raise ValueError(f"Invalid level '{level}'. Must be one of: {sorted(MEMBER_LEVELS)}")
         client = get_client()
-        data = await client.ocs_put_json(
-            f"apps/circles/circles/{circle_id}/members/{member_id}/level",
-            json_data={"level": MEMBER_LEVELS[level]},
-        )
+        try:
+            data = await client.ocs_put_json(
+                f"apps/circles/circles/{circle_id}/members/{member_id}/level",
+                json_data={"level": MEMBER_LEVELS[level]},
+            )
+        except NextcloudError as e:
+            # Circles releases before the fix of nextcloud/circles#2916 lock the members with a query SQLite
+            # cannot build and PostgreSQL refuses; the transaction is rolled back, so the old owner keeps it.
+            if level == "owner" and _refused_row_lock(str(e)):
+                msg = (
+                    "This server's Circles app cannot transfer ownership: its database refuses the row lock Circles "
+                    "takes, a Circles bug fixed in Nextcloud updates from late September 2026. Nothing was changed; "
+                    "other level changes still work."
+                )
+                raise ValueError(msg) from e
+            raise
         return json.dumps(data)
+
+
+def _refused_row_lock(message: str) -> bool:
+    """Whether the database refused Circles' SELECT ... FOR UPDATE (SQLite, or PostgreSQL on an outer join)."""
+    return "FOR UPDATE" in message and ("not supported" in message or "outer join" in message)
 
 
 def _register_destructive_tools(mcp: FastMCP) -> None:
