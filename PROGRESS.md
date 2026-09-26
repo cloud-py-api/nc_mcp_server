@@ -54,6 +54,7 @@
 - [x] Collectives page editing: update_collective_page (text, title, emoji), move_collective_page (also copy and to another collective), search_collective_pages, list_recent_collective_pages; create_collective_page takes content, delete_collective can delete the team (2026-09-25)
 - [x] Collectives tags, attachments and public links: list/create/update/delete_collective_tag, set_collective_page_tags, list_collective_page_attachments, list_collective_shares, share_collective, update_collective_share, delete_collective_share (2026-09-25)
 - [x] Received shares: list_shares takes shared_with_me (federated shares included), list_pending_shares, accept_share, decline_share; delete_share leaves a received share, federated ones too (2026-09-25)
+- [x] Activity search: get_activity takes search, start, end and actor on Nextcloud 35 (refused on older servers, which would ignore them) and returns an empty page instead of failing at the end of the feed; list_activity_filters, get_activity_counts (2026-09-26)
 
 ### In Progress
 
@@ -90,7 +91,7 @@
 | Talk Settings | 6 | 41 |
 | Talk Admin | 5 | 61 |
 | Talk Tags | 6 | 20 |
-| Activity | 1 | 20 |
+| Activity | 3 | 58 |
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
 | Announcements | 3 | 29 |
@@ -108,8 +109,8 @@
 | User Permissions | — | 25 |
 | Server | — | 8 |
 | Permissions | — | 34 |
-| Errors | — | 31 |
-| Client | — | 75 |
+| Errors | — | 36 |
+| Client | — | 79 |
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 26 |
@@ -118,7 +119,7 @@
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **221** | **1610** |
+| **Total** | **223** | **1657** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 220 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 222 tools.
