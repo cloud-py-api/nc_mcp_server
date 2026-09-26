@@ -30,15 +30,15 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 217 Tools Across 24 Nextcloud Apps
+## 220 Tools Across 24 Nextcloud Apps
 
-A 218th tool, `upload_file_from_path`, is registered only when the operator sets
+A 221st tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
 |----------|-------|----------|
 | [Files](#files) | list, read, search, upload (text / binary / from path), copy, move, delete | WebDAV |
-| [File Sharing](#file-sharing) | list, get, create, update, delete shares | OCS |
+| [File Sharing](#file-sharing) | list, get, create, update, delete shares; accept, decline and leave shares from others | OCS |
 | [Trashbin](#trashbin) | list, restore, delete item, empty trash | WebDAV |
 | [File Versions](#file-versions) | list, restore versions | WebDAV |
 | [File Comments](#file-comments) | list, add, edit, delete comments | WebDAV |
@@ -205,11 +205,14 @@ call; the body is streamed in chunks rather than loaded into memory.
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `list_shares` | read | List shares for a file/folder or all shares |
+| `list_shares` | read | List shares for a file/folder, all your shares, or the shares others gave you (federated included) |
 | `get_share` | read | Get details of a specific share |
+| `list_pending_shares` | read | List shares offered to you that wait to be accepted, from this server and federated |
 | `create_share` | write | Share a file/folder (user, group, public link, email) |
 | `update_share` | write | Update share permissions, expiration, password, etc. |
-| `delete_share` | destructive | Remove a share |
+| `accept_share` | write | Accept a pending share |
+| `delete_share` | destructive | Remove a share, or leave one you received |
+| `decline_share` | destructive | Decline a pending share |
 
 ### Trashbin
 

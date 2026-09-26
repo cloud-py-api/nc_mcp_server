@@ -11,6 +11,7 @@ from nc_mcp_server.server import create_server
 pytestmark = pytest.mark.integration
 
 EXPECTED_TOOLS = [
+    "accept_share",
     "add_circle_member",
     "add_comment",
     "add_mail_message_tag",
@@ -46,6 +47,7 @@ EXPECTED_TOOLS = [
     "create_tag",
     "create_task",
     "create_user",
+    "decline_share",
     "delete_all_submissions",
     "delete_announcement",
     "delete_circle",
@@ -147,6 +149,7 @@ EXPECTED_TOOLS = [
     "list_mailboxes",
     "list_message_reminders",
     "list_notifications",
+    "list_pending_shares",
     "list_questions",
     "list_recent_collective_pages",
     "list_search_providers",

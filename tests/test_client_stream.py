@@ -80,7 +80,7 @@ class TestDavPutStreamAuthRetry:
         session.auth = None  # marks the session as cached → _should_retry_auth fires on 401
         client._session = session
 
-        async def _noop_reset() -> None:
+        async def _noop_reset(stale: object = None) -> None:
             return None
 
         monkeypatch.setattr(client, "_reset_session", _noop_reset)

@@ -1,5 +1,6 @@
 """HTTP client for Nextcloud REST/OCS/DAV APIs."""
 
+import asyncio
 import contextlib
 import logging
 import xml.etree.ElementTree as ET
@@ -220,23 +221,68 @@ class NextcloudClient:
         self._config = config
         self._base_url = config.nextcloud_url
         self._session: niquests.AsyncSession | None = None
+        # A replaced session may still carry requests of concurrent calls; it is closed once they finish
+        self._retired_sessions: list[niquests.AsyncSession] = []
+        self._in_flight: dict[int, int] = {}
+        # One login at a time: calls that hit an expired session together share the reset
+        self._reset_lock = asyncio.Lock()
 
     async def _get_session(self) -> niquests.AsyncSession:
         if self._session is None:
             self._session = self._build_session()
-            await self._init_session_auth()
+            await self._init_session_auth(self._session)
         return self._session
 
     @property
     def _session_is_cached(self) -> bool:
         return self._session is not None and self._session.auth is None
 
-    async def _reset_session(self) -> None:
-        """Discard the current session and create a fresh one with Basic Auth."""
-        if self._session:
-            await self._session.close()
-        self._session = self._build_session()
-        await self._init_session_auth()
+    async def renew_session(self) -> None:
+        """Log in again, so the following requests run in a new server session.
+
+        Nextcloud does not show an existing session the federated shares accepted during it,
+        while a session that starts after they were set up for the user sees them.
+        """
+        await self._reset_session()
+
+    async def _reset_session(self, stale: niquests.AsyncSession | None = None) -> None:
+        """Replace the current session with a fresh one that logs in with Basic Auth.
+
+        With stale, the session that failed, nothing happens when another call replaced it
+        meanwhile; without it, the login always happens. The new session is set up before it
+        takes over. The old one is closed right away when no request is using it, otherwise
+        when the last concurrent request sent through it finishes.
+        """
+        async with self._reset_lock:
+            if stale is not None and self._session is not stale:
+                return
+            session = self._build_session()
+            try:
+                await self._init_session_auth(session)
+            except BaseException:
+                await session.close()
+                raise
+            old, self._session = self._session, session
+        if old is None:
+            return
+        if self._in_flight.get(id(old)):
+            self._retired_sessions.append(old)
+        else:
+            await old.close()
+
+    async def _send(self, session: niquests.AsyncSession, method: str, url: str, **kwargs: Any) -> niquests.Response:
+        """Send a request through a session, closing the session afterwards if it was replaced meanwhile."""
+        key = id(session)
+        self._in_flight[key] = self._in_flight.get(key, 0) + 1
+        try:
+            return await session.request(method, url, **kwargs)
+        finally:
+            self._in_flight[key] -= 1
+            if not self._in_flight[key]:
+                del self._in_flight[key]
+                if session in self._retired_sessions:
+                    self._retired_sessions.remove(session)
+                    await session.close()
 
     def _build_session(self) -> niquests.AsyncSession:
         kwargs: dict[str, object] = {
@@ -262,19 +308,20 @@ class NextcloudClient:
             )
         return niquests.AsyncSession(**kwargs)  # type: ignore[arg-type]
 
-    async def _should_retry_auth(self, response: niquests.Response) -> bool:
+    async def _should_retry_auth(self, response: niquests.Response, session: niquests.AsyncSession) -> bool:
         """Check if a 401 response is due to an expired cached session.
 
         If so, resets the session (re-authenticates) and returns True so the
-        caller can retry the request once.
+        caller can retry the request once. When a concurrent call already
+        replaced the session that got the 401, the retry just uses the new one.
         """
-        if response.status_code == 401 and self._session_is_cached:
-            log.debug("Session expired (401), re-authenticating")
-            await self._reset_session()
-            return True
-        return False
+        if response.status_code != 401 or session.auth is not None:
+            return False
+        log.debug("Session expired (401), re-authenticating")
+        await self._reset_session(stale=session)
+        return True
 
-    async def _init_session_auth(self) -> None:
+    async def _init_session_auth(self, session: niquests.AsyncSession) -> None:
         """Authenticate once and try to cache the server session.
 
         Nextcloud hashes the password (bcrypt) on every Basic Auth request.
@@ -288,38 +335,37 @@ class NextcloudClient:
         """
         if self._config.is_app_password:
             return
-        if self._session is None:
-            return
         url = f"{self._base_url}/ocs/v2.php/cloud/capabilities"
         try:
-            self._session.cookies.set("cookie_test", "test")  # type: ignore[union-attr]
-            resp = await self._session.get(url)
+            session.cookies.set("cookie_test", "test")  # type: ignore[union-attr]
+            resp = await session.get(url)
             if not resp.ok:
                 return
         except OSError:
             return
-        saved_auth = self._session.auth
-        self._session.auth = None
+        saved_auth = session.auth
+        session.auth = None
         try:
-            probe = await self._session.get(url)
+            probe = await session.get(url)
             if probe.ok:
                 log.debug("Session cookie cached, disabled Basic Auth for subsequent requests")
                 return
         except OSError:
             pass
-        self._session.auth = saved_auth
+        session.auth = saved_auth
 
     async def _do_request(self, method: str, url: str, **kwargs: Any) -> niquests.Response:
         """Execute an HTTP request, retrying once if a cached session expired or lacks a password confirmation."""
         session = await self._get_session()
         # Taken per request: a concurrent call can swap self._session while this one is in flight
         cached = session.auth is None
-        response = await session.request(method, url, **kwargs)
-        if await self._should_retry_auth(response):
+        response = await self._send(session, method, url, **kwargs)
+        if await self._should_retry_auth(response, session):
             session = await self._get_session()
             cached = session.auth is None
-            response = await session.request(method, url, **kwargs)
+            response = await self._send(session, method, url, **kwargs)
         if cached and _needs_password_confirmation(response):
+            log.debug("Password confirmation missing, repeating %s %s with a fresh login", method, url)
             response = await self._request_with_password(method, url, **kwargs)
         return response
 
@@ -330,8 +376,9 @@ class NextcloudClient:
         carries the password header strict endpoints (enabling apps, for one) demand. A new login
         confirms the password, sends that header, and, having no session cookie, also lets
         'allowed_no_password_confirmation_ranges' apply, which Nextcloud skips for session logins.
+        A login also sets up the user's files from scratch, which a session does not always do.
         """
-        log.debug("Password confirmation missing, repeating %s %s with a fresh login", method, url)
+        log.debug("Sending %s %s with a fresh login", method, url)
         session = self._build_session()
         try:
             return await session.request(method, url, **kwargs)
@@ -339,22 +386,31 @@ class NextcloudClient:
             await session.close()
 
     async def close(self) -> None:
-        """Close the HTTP session."""
+        """Close the HTTP session and any replaced ones still in use."""
+        retired, self._retired_sessions = self._retired_sessions, []
+        for session in retired:
+            await session.close()
         if self._session:
             await self._session.close()
             self._session = None
 
     # --- OCS API ---
 
-    async def ocs_get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+    async def ocs_get(self, path: str, params: dict[str, Any] | None = None, *, fresh_login: bool = False) -> Any:
         """Make an OCS GET request and return the data portion.
 
         Returns None for "304 Not Modified", which Talk's chat endpoint answers with an
         empty body when no message matches the query (for example when paging past the
         oldest message of a conversation or of a thread).
+
+        With fresh_login, the request is sent as a new Basic Auth login outside the cached session
+        (see ocs_delete).
         """
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await self._do_request("GET", url, params=params or {})
+        if fresh_login:
+            response = await self._request_with_password("GET", url, params=params or {})
+        else:
+            response = await self._do_request("GET", url, params=params or {})
         _raise_for_ocs_status(response, f"OCS GET {path}")
         if response.status_code == 304:
             return None
@@ -385,10 +441,17 @@ class NextcloudClient:
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
 
-    async def ocs_delete(self, path: str) -> Any:
-        """Make an OCS DELETE request and return the data portion (if any)."""
+    async def ocs_delete(self, path: str, *, fresh_login: bool = False) -> Any:
+        """Make an OCS DELETE request and return the data portion (if any).
+
+        With fresh_login, the request is sent as a new Basic Auth login outside the cached session, for
+        endpoints that only see what a login sets up (the mounts of federated shares accepted in the session).
+        """
         url = f"{self._base_url}/ocs/v2.php/{path}"
-        response = await self._do_request("DELETE", url)
+        if fresh_login:
+            response = await self._request_with_password("DELETE", url)
+        else:
+            response = await self._do_request("DELETE", url)
         _raise_for_ocs_status(response, f"OCS DELETE {path}")
         result: dict[str, Any] = response.json()  # type: ignore[assignment]
         return result["ocs"]["data"]
@@ -528,10 +591,10 @@ class NextcloudClient:
         timeout = Timeout(connect=30, read=None)
 
         session = await self._get_session()
-        response = await session.request("PUT", url, data=chunks_factory(), headers=headers, timeout=timeout)
-        if await self._should_retry_auth(response):
+        response = await self._send(session, "PUT", url, data=chunks_factory(), headers=headers, timeout=timeout)
+        if await self._should_retry_auth(response, session):
             session = await self._get_session()
-            response = await session.request("PUT", url, data=chunks_factory(), headers=headers, timeout=timeout)
+            response = await self._send(session, "PUT", url, data=chunks_factory(), headers=headers, timeout=timeout)
         _raise_for_status(response, f"Upload file '{path}'")
 
     async def dav_delete(self, path: str) -> None:

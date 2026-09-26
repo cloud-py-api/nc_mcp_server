@@ -53,6 +53,7 @@
 - [x] Talk tags, presets and preserve: list_conversation_tags, create/rename/delete_conversation_tag, set_conversation_tags, list_conversation_presets; create_conversation takes a preset and description, update_conversation preserves conversations on Talk 25 (2026-09-25)
 - [x] Collectives page editing: update_collective_page (text, title, emoji), move_collective_page (also copy and to another collective), search_collective_pages, list_recent_collective_pages; create_collective_page takes content, delete_collective can delete the team (2026-09-25)
 - [x] Collectives tags, attachments and public links: list/create/update/delete_collective_tag, set_collective_page_tags, list_collective_page_attachments, list_collective_shares, share_collective, update_collective_share, delete_collective_share (2026-09-25)
+- [x] Received shares: list_shares takes shared_with_me (federated shares included), list_pending_shares, accept_share, decline_share; delete_share leaves a received share, federated ones too (2026-09-25)
 
 ### In Progress
 
@@ -95,7 +96,7 @@
 | Announcements | 3 | 29 |
 | Trashbin | 4 | 22 |
 | Versions | 2 | 18 |
-| Shares | 5 | 40 |
+| Shares | 8 | 86 |
 | System Tags | 6 | 22 |
 | Mail | 10 | 102 |
 | Collectives | 25 | 92 |
@@ -108,7 +109,7 @@
 | Server | — | 8 |
 | Permissions | — | 34 |
 | Errors | — | 31 |
-| Client | — | 63 |
+| Client | — | 75 |
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 26 |
@@ -117,7 +118,7 @@
 | Circles | 14 | 31 |
 | Cospend | 16 | 35 |
 | Flow | 5 | 58 |
-| **Total** | **218** | **1552** |
+| **Total** | **221** | **1610** |
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
-`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 217 tools.
+`NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 220 tools.
