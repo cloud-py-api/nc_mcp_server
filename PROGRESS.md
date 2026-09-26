@@ -82,8 +82,8 @@
 | Module | Tools | Tests |
 |--------|-------|-------|
 | Files | 10 | 166 |
-| Users | 7 | 66 |
-| Groups | 4 | 20 |
+| Users | 7 | 72 |
+| Groups | 4 | 15 |
 | Notifications | 3 | 11 |
 | Talk | 8 | 57 |
 | Talk Polls | 4 | 32 |
@@ -96,31 +96,35 @@
 | Comments | 4 | 29 |
 | User Status | 3 | 19 |
 | Announcements | 3 | 29 |
-| Trashbin | 4 | 22 |
+| Trashbin | 4 | 28 |
 | Versions | 2 | 18 |
 | Shares | 8 | 86 |
 | System Tags | 6 | 22 |
 | Mail | 10 | 102 |
-| Collectives | 25 | 92 |
+| Collectives | 25 | 95 |
 | App Management | 4 | 14 |
 | Calendar | 6 | 44 |
-| Contacts | 6 | 36 |
-| Tasks | 7 | 48 |
+| Contacts | 6 | 78 |
+| Tasks | 7 | 51 |
 | Search | 2 | 17 |
 | User Permissions | — | 25 |
 | Server | — | 8 |
 | Permissions | — | 34 |
-| Errors | — | 36 |
-| Client | — | 79 |
+| Errors | — | 55 |
+| Client | — | 75 |
 | Config | — | 24 |
 | State | — | 2 |
 | File Helpers | — | 36 |
-| File Reminders | 3 | 20 |
+| File Reminders | 3 | 22 |
 | Forms | 25 | 34 |
 | Circles | 14 | 31 |
-| Cospend | 16 | 35 |
+| Cospend | 16 | 41 |
 | Flow | 5 | 58 |
-| **Total** | **223** | **1675** |
+| Pagination | — | 28 |
+| **Total** | **223** | **1781** |
+
+The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
+which also fails when a test file is not assigned to a row.
 
 Files shows 10, but one (`upload_file_from_path`) is only registered when
 `NEXTCLOUD_MCP_UPLOAD_ROOT` is configured. Default deployments expose 222 tools.
