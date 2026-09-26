@@ -15,10 +15,26 @@ jobs:
       matrix:
         nextcloud-version: ["34", "35"]
     services:
+      # PostgreSQL rather than SQLite: with SQLite, Circles' background requests and the tests lock the
+      # database against each other, which failed tests at random ("database is locked").
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: nextcloud
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
+        options: >-
+          --health-cmd "pg_isready -U nextcloud"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
         env:
-          SQLITE_DATABASE: nextcloud
+          POSTGRES_HOST: postgres
+          POSTGRES_DB: nextcloud
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
           NEXTCLOUD_ADMIN_USER: admin
           NEXTCLOUD_ADMIN_PASSWORD: admin
         ports:
@@ -140,10 +156,24 @@ jobs:
       matrix:
         nextcloud-version: ["34", "35"]
     services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: nextcloud
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
+        options: >-
+          --health-cmd "pg_isready -U nextcloud"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
         env:
-          SQLITE_DATABASE: nextcloud
+          POSTGRES_HOST: postgres
+          POSTGRES_DB: nextcloud
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
           NEXTCLOUD_ADMIN_USER: admin
           NEXTCLOUD_ADMIN_PASSWORD: admin
         ports:
@@ -211,10 +241,24 @@ jobs:
       matrix:
         nextcloud-version: ["34", "35"]
     services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: nextcloud
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
+        options: >-
+          --health-cmd "pg_isready -U nextcloud"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
       nextcloud:
         image: nextcloud:${{ matrix.nextcloud-version }}
         env:
-          SQLITE_DATABASE: nextcloud
+          POSTGRES_HOST: postgres
+          POSTGRES_DB: nextcloud
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
           NEXTCLOUD_ADMIN_USER: admin
           NEXTCLOUD_ADMIN_PASSWORD: admin
         ports:
