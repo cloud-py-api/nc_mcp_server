@@ -257,7 +257,11 @@ class NextcloudClient:
             if stale is not None and self._session is not stale:
                 return
             session = self._build_session()
-            await self._init_session_auth(session)
+            try:
+                await self._init_session_auth(session)
+            except BaseException:
+                await session.close()
+                raise
             old, self._session = self._session, session
         if old is None:
             return

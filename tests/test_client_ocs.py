@@ -176,6 +176,19 @@ class TestReplacedSessions:
         assert client._session is renewed
 
     @pytest.mark.asyncio
+    async def test_failed_login_closes_the_new_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client, current, _, _ = self._client(monkeypatch)
+        fresh = MagicMock()
+        fresh.close = AsyncMock()
+        monkeypatch.setattr(client, "_build_session", lambda: fresh)
+        monkeypatch.setattr(client, "_init_session_auth", AsyncMock(side_effect=asyncio.CancelledError))
+        with pytest.raises(asyncio.CancelledError):
+            await client.renew_session()
+        fresh.close.assert_awaited_once()
+        assert client._session is current
+        current.close.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_renew_session_always_logs_in(self, monkeypatch: pytest.MonkeyPatch) -> None:
         client, _, renewed, _ = self._client(monkeypatch)
         client._session = renewed
