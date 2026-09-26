@@ -25,15 +25,26 @@ def _origin(exception: dict) -> str:
     return ""
 
 
-def main() -> None:
+def _level(entry: dict) -> int:
+    try:
+        return int(entry.get("level", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def main() -> int:
     noise: Counter[str] = Counter()
     shown = 0
+    entries = 0
     for line in sys.stdin:
         try:
             entry = json.loads(line)
         except ValueError:
             continue
-        if int(entry.get("level", 0)) < MIN_LEVEL:
+        if not isinstance(entry, dict):
+            continue
+        entries += 1
+        if _level(entry) < MIN_LEVEL:
             continue
         message = str(entry.get("message", ""))
         known = next((n for n in NOISE if message.startswith(n)), None)
@@ -51,9 +62,13 @@ def main() -> None:
             exception = exception.get("Previous")
     for text, count in noise.items():
         print(f"(skipped {count} x '{text} ...')")
+    if not entries:
+        print("The Nextcloud log is empty or could not be read.")
+        return 1
     if not shown:
         print("No errors in the Nextcloud log.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
