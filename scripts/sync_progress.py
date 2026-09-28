@@ -48,7 +48,7 @@ ROWS: dict[str, list[str]] = {
         "integration/test_session_cache.py",
     ],
     "Pagination": ["integration/test_pagination.py"],
-    "Config": ["test_config.py"],
+    "Config": ["test_config.py", "test_version.py"],
     "State": ["test_state.py"],
     "File Helpers": ["test_files_helpers.py"],
     "File Reminders": ["integration/test_reminders.py", "test_reminders.py"],

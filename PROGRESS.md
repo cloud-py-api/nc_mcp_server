@@ -113,7 +113,7 @@
 | Permissions | — | 34 |
 | Errors | — | 55 |
 | Client | — | 75 |
-| Config | — | 24 |
+| Config | — | 26 |
 | State | — | 2 |
 | File Helpers | — | 36 |
 | File Reminders | 3 | 22 |
@@ -122,7 +122,7 @@
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1787** |
+| **Total** | **223** | **1789** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.
