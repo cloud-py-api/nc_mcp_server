@@ -265,7 +265,7 @@ async def _cleanup(client: NextcloudClient) -> None:
 
 @functools.cache
 def team_folders_expected() -> bool:
-    """Whether the server gives new circles team folders: Nextcloud 35+ with the Team folders app enabled."""
+    """Whether the server gives new circles team folders: Nextcloud 35+ with the Team folders app, not turned off."""
     config = get_config()
     auth = (config.user, config.password)
     headers = {"OCS-APIRequest": "true", "Accept": "application/json"}
@@ -279,4 +279,15 @@ def team_folders_expected() -> bool:
         headers=headers,
         timeout=10,
     )
-    return "groupfolders" in apps.json()["ocs"]["data"]["apps"]
+    apps.raise_for_status()
+    if "groupfolders" not in apps.json()["ocs"]["data"]["apps"]:
+        return False
+    # An admin can turn automatic team folders off; the key is empty while unset (on)
+    toggle = niquests.get(
+        f"{config.nextcloud_url}/ocs/v2.php/apps/provisioning_api/api/v1/config/apps/circles/team_folder_auto_create",
+        auth=auth,
+        headers=headers,
+        timeout=10,
+    )
+    toggle.raise_for_status()
+    return str(toggle.json()["ocs"]["data"]["data"]).lower() not in ("0", "false", "no")

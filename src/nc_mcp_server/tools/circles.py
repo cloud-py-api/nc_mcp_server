@@ -64,19 +64,27 @@ async def _report_team_folder(client: NextcloudClient, circle: dict[str, Any]) -
         await client.renew_session()
 
 
-async def team_folder_at_stake(client: NextcloudClient, circle_id: str) -> dict[str, Any] | None:
-    """get_team_folder for a guard before a deletion: a failed check stops the deletion, and says so."""
+async def team_folder_at_stake(
+    client: NextcloudClient, circle_id: str, delete_team_folder: bool, circle: str
+) -> dict[str, Any] | None:
+    """get_team_folder for a guard before deleting a circle, which circle describes in messages.
+
+    Without delete_team_folder a failed check stops the deletion, and says so. With it the caller has agreed to lose
+    the folder, so an unknown folder does not hold the deletion up; the server still refuses what it would refuse.
+    """
     try:
         return await get_team_folder(client, circle_id)
     except NextcloudError as e:
-        what = f"checking the team folder of circle {circle_id} first failed"
+        if delete_team_folder:
+            return None
+        what = f"checking the team folder of {circle} first failed"
         if e.status_code == 403:
             # Circles also answers 403 for circles that do not exist, and only the owner may delete one anyway
-            what = f"you are not a member of circle {circle_id}, or it does not exist; only its owner can delete it"
-        raise _unchanged(e, what) from e
+            what = f"you are not a member of {circle}, or it does not exist; only its owner can delete it"
+        raise unchanged(e, what) from e
 
 
-def _unchanged(error: NextcloudError, what: str) -> NextcloudError:
+def unchanged(error: NextcloudError, what: str) -> NextcloudError:
     """A failed check before a deletion, saying that nothing was deleted."""
     return NextcloudError(f"Nothing was changed: {what}: {error}", error.status_code)
 
@@ -342,7 +350,7 @@ def _register_membership_tools(mcp: FastMCP) -> None:
             try:
                 folder = await _folder_lost_by_leaving(client, circle_id)
             except NextcloudError as e:
-                raise _unchanged(e, "checking whether leaving would delete the circle failed") from e
+                raise unchanged(e, "checking whether leaving would delete the circle failed") from e
             if folder is not None:
                 raise refuse_team_folder_loss(
                     "Leaving as the owner and last member deletes the circle, and with it its",
@@ -471,13 +479,13 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
             the deletion in the background within seconds.
         """
         client = get_client()
-        folder = await team_folder_at_stake(client, circle_id)
+        folder = await team_folder_at_stake(client, circle_id, delete_team_folder, f"circle {circle_id}")
         if folder is not None and not delete_team_folder:
             raise refuse_team_folder_loss(
-                "Deleting this circle would also delete its",
+                "Deleting this circle would also delete, for all its members, its",
                 folder,
-                "All its members lose these files. Move out what should be kept first; to delete the folder too, "
-                "the circle's owner calls again with delete_team_folder=true.",
+                "Move out what should be kept first; to delete the folder too, the circle's owner calls again with "
+                "delete_team_folder=true.",
             )
         await client.ocs_delete(f"apps/circles/circles/{circle_id}")
         result: dict[str, Any] = {"deleted_circle_id": circle_id}

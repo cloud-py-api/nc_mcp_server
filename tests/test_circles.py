@@ -155,8 +155,15 @@ class TestDeleteCircle:
     async def test_a_failed_check_deletes_nothing(self, mcp: FastMCP, destructive: MagicMock) -> None:
         destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Internal Server Error", 500)
         with pytest.raises(ToolError, match=r"Nothing was changed: checking the team folder of circle c first failed"):
-            await _call(mcp, "delete_circle", circle_id="c", delete_team_folder=True)
+            await _call(mcp, "delete_circle", circle_id="c")
         destructive.ocs_delete.assert_not_awaited()
+
+    async def test_a_forced_delete_goes_past_a_failed_check(self, mcp: FastMCP, destructive: MagicMock) -> None:
+        """The caller agreed to lose the folder, so a check that cannot answer does not block the deletion."""
+        destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Internal Server Error", 500)
+        result = json.loads(await _call(mcp, "delete_circle", circle_id="c", delete_team_folder=True))
+        assert result == {"deleted_circle_id": "c"}
+        destructive.ocs_delete.assert_awaited_once_with("apps/circles/circles/c")
 
     async def test_non_members_learn_why(self, mcp: FastMCP, destructive: MagicMock) -> None:
         destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Insufficient permissions", 403)

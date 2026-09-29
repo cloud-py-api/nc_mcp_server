@@ -10,7 +10,12 @@ from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..client import NextcloudClient, NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
-from .circles import get_team_folder, refuse_team_folder_loss, team_folder_at_stake
+from .circles import (
+    get_team_folder,
+    refuse_team_folder_loss,
+    team_folder_at_stake,
+    unchanged,
+)
 
 API = "apps/collectives/api/v1.0"
 
@@ -385,12 +390,21 @@ def _register_page_edit_tools(mcp: FastMCP) -> None:
         return json.dumps(_format_page(data["page"]), default=str)
 
 
-async def _trashed_team_folder(client: NextcloudClient, collective_id: int) -> dict[str, Any] | None:
+async def _trashed_team_folder(
+    client: NextcloudClient, collective_id: int, delete_team_folder: bool
+) -> dict[str, Any] | None:
     """The team folder of a trashed collective's team, which deleting the collective with its team would delete."""
-    data = await client.ocs_get(f"{API}/collectives/trash")
+    try:
+        data = await client.ocs_get(f"{API}/collectives/trash")
+    except NextcloudError as e:
+        if delete_team_folder:
+            return None
+        raise unchanged(e, "listing the trashed collectives to check the team folder first failed") from e
     for collective in data.get("collectives", []):
         if collective.get("id") == collective_id and collective.get("circleId"):
-            return await team_folder_at_stake(client, collective["circleId"])
+            return await team_folder_at_stake(
+                client, collective["circleId"], delete_team_folder, "the collective's circle"
+            )
     # Not in the trash: the delete itself fails with the server's own message.
     return None
 
@@ -457,10 +471,10 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         client = get_client()
         folder = None
         if delete_team:
-            folder = await _trashed_team_folder(client, collective_id)
+            folder = await _trashed_team_folder(client, collective_id, delete_team_folder)
             if folder is not None and not delete_team_folder:
                 raise refuse_team_folder_loss(
-                    "Deleting this collective's circle (team) would also delete its",
+                    "Deleting this collective's circle (team) would also delete, for all its members, its",
                     folder,
                     "Call without delete_team to keep the circle and its folder; to delete them too, the circle's "
                     "owner calls again with delete_team=true and delete_team_folder=true.",

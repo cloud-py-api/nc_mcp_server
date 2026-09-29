@@ -303,12 +303,37 @@ class TestDeleteCollective:
             await _call(mcp, "delete_collective", collective_id=9, delete_team=True)
         client.ocs_get.assert_awaited_once_with("apps/collectives/api/v1.0/collectives/trash")
 
+    async def test_a_failed_trash_listing_deletes_nothing(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_get.side_effect = NextcloudError("OCS GET x: Internal Server Error", 500)
+        client.ocs_delete = AsyncMock(return_value={})
+        with pytest.raises(ToolError, match=r"Nothing was changed: listing the trashed collectives"):
+            await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
+        client.ocs_delete.assert_not_awaited()
+
+    @pytest.mark.parametrize("failing", [0, 1])
+    async def test_a_forced_delete_goes_past_a_failed_check(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock], failing: int
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        responses: list[Any] = [TRASH, FOLDER]
+        responses[failing] = NextcloudError("OCS GET x: Internal Server Error", 500)
+        client.ocs_get.side_effect = responses
+        client.ocs_delete = AsyncMock(return_value={})
+        result = await _call(mcp, "delete_collective", collective_id=3, delete_team=True, delete_team_folder=True)
+        assert result.endswith("deleted permanently with its team.")
+        client.ocs_delete.assert_awaited_once_with("apps/collectives/api/v1.0/collectives/trash/3?circle=1")
+
     async def test_a_failed_folder_check_deletes_nothing(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
         mcp, client = mcp_with_mock_client
         set_permission_level(PermissionLevel.DESTRUCTIVE)
         client.ocs_get.side_effect = [TRASH, NextcloudError("OCS GET x: Insufficient permissions", 403)]
         client.ocs_delete = AsyncMock(return_value={})
-        with pytest.raises(ToolError, match=r"Nothing was changed: you are not a member of circle team3"):
+        with pytest.raises(ToolError, match=r"Nothing was changed: you are not a member of the collective's circle"):
             await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
         client.ocs_delete.assert_not_awaited()
 
