@@ -26,8 +26,8 @@ MEMBER_LEVELS = {
 }
 
 NO_TEAM_FOLDER = (
-    "No team folder was created. Team folders need Nextcloud 35 or later with the Team folders app, are not made "
-    "for personal teams, and an admin can turn them off."
+    "No team folder was created. Team folders need Nextcloud 35 or later with the Team folders app, personal "
+    "circles get none, an admin can turn them off, and the server only logs a failed creation."
 )
 
 
@@ -69,16 +69,25 @@ async def team_folder_at_stake(client: NextcloudClient, circle_id: str) -> dict[
     try:
         return await get_team_folder(client, circle_id)
     except NextcloudError as e:
-        msg = f"Nothing was changed: checking the team folder of circle {circle_id} first failed: {e}"
-        raise NextcloudError(msg, e.status_code) from e
+        what = f"checking the team folder of circle {circle_id} first failed"
+        if e.status_code == 403:
+            # Circles also answers 403 for circles that do not exist, and only the owner may delete one anyway
+            what = f"you are not a member of circle {circle_id}, or it does not exist; only its owner can delete it"
+        raise _unchanged(e, what) from e
 
 
-def refuse_team_folder_loss(action: str, folder: dict[str, Any]) -> ValueError:
-    """The error for an action that would delete a team folder the caller did not agree to lose."""
+def _unchanged(error: NextcloudError, what: str) -> NextcloudError:
+    """A failed check before a deletion, saying that nothing was deleted."""
+    return NextcloudError(f"Nothing was changed: {what}: {error}", error.status_code)
+
+
+def refuse_team_folder_loss(lead: str, folder: dict[str, Any], advice: str) -> ValueError:
+    """The error for an action that would delete a team folder the caller did not agree to lose.
+
+    lead ends where the folder is named, advice says how to keep it or delete it anyway.
+    """
     return ValueError(
-        f"{action} would also delete the team folder '{folder.get('mountPoint')}' and every file in it, for all "
-        "members. Nothing was changed. Move out what should be kept; to go ahead anyway, the circle's owner calls "
-        "again with delete_team_folder=true."
+        f"{lead} team folder '{folder.get('mountPoint')}' and every file in it. Nothing was changed. {advice}"
     )
 
 
@@ -330,9 +339,17 @@ def _register_membership_tools(mcp: FastMCP) -> None:
         """
         client = get_client()
         if not delete_team_folder:
-            folder = await _folder_lost_by_leaving(client, circle_id)
+            try:
+                folder = await _folder_lost_by_leaving(client, circle_id)
+            except NextcloudError as e:
+                raise _unchanged(e, "checking whether leaving would delete the circle failed") from e
             if folder is not None:
-                raise refuse_team_folder_loss("Leaving as the owner and last member deletes the circle, which", folder)
+                raise refuse_team_folder_loss(
+                    "Leaving as the owner and last member deletes the circle, and with it its",
+                    folder,
+                    "To keep them, add a member first (the circle then passes to them) or move out what should be "
+                    "kept; to delete the folder too, call again with delete_team_folder=true.",
+                )
         data = await client.ocs_put_json(f"apps/circles/circles/{circle_id}/leave", json_data={})
         return json.dumps(data)
 
@@ -419,7 +436,7 @@ async def _folder_lost_by_leaving(client: NextcloudClient, circle_id: str) -> di
     initiator: dict[str, Any] = circle.get("initiator") or {}
     if initiator.get("level") != MEMBER_LEVELS["owner"]:
         return None
-    folder = await team_folder_at_stake(client, circle_id)
+    folder = await get_team_folder(client, circle_id)
     if folder is None:
         return None
     # Circles hands the circle to any other member, even a pending invitation or join request, and destroys it
@@ -456,7 +473,12 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         client = get_client()
         folder = await team_folder_at_stake(client, circle_id)
         if folder is not None and not delete_team_folder:
-            raise refuse_team_folder_loss("Deleting this circle", folder)
+            raise refuse_team_folder_loss(
+                "Deleting this circle would also delete its",
+                folder,
+                "All its members lose these files. Move out what should be kept first; to delete the folder too, "
+                "the circle's owner calls again with delete_team_folder=true.",
+            )
         await client.ocs_delete(f"apps/circles/circles/{circle_id}")
         result: dict[str, Any] = {"deleted_circle_id": circle_id}
         if folder is not None:

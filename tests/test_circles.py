@@ -153,11 +153,15 @@ class TestDeleteCircle:
         destructive.ocs_delete.assert_awaited_once_with("apps/circles/circles/c")
 
     async def test_a_failed_check_deletes_nothing(self, mcp: FastMCP, destructive: MagicMock) -> None:
-        destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Insufficient permissions", 403)
-        with pytest.raises(
-            ToolError, match=r"Nothing was changed: checking the team folder of circle c .*Insufficient"
-        ):
+        destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Internal Server Error", 500)
+        with pytest.raises(ToolError, match=r"Nothing was changed: checking the team folder of circle c first failed"):
             await _call(mcp, "delete_circle", circle_id="c", delete_team_folder=True)
+        destructive.ocs_delete.assert_not_awaited()
+
+    async def test_non_members_learn_why(self, mcp: FastMCP, destructive: MagicMock) -> None:
+        destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Insufficient permissions", 403)
+        with pytest.raises(ToolError, match=r"Nothing was changed: you are not a member of circle c, or it does not"):
+            await _call(mcp, "delete_circle", circle_id="c")
         destructive.ocs_delete.assert_not_awaited()
 
 
@@ -191,7 +195,9 @@ class TestLeaveCircle:
         self, mcp: FastMCP, destructive: MagicMock
     ) -> None:
         destructive.ocs_get.side_effect = [OWNER, FOLDER, [_member("m-owner")]]
-        with pytest.raises(ToolError, match=r"last member deletes the circle.*team folder 'Team A'"):
+        with pytest.raises(
+            ToolError, match=r"last member deletes the circle.*team folder 'Team A'.*add a member first"
+        ):
             await _call(mcp, "leave_circle", circle_id="c")
         assert destructive.ocs_get.await_args_list == [
             call("apps/circles/circles/c"),
@@ -215,6 +221,12 @@ class TestLeaveCircle:
 
     async def test_other_check_errors_leave_nothing(self, mcp: FastMCP, destructive: MagicMock) -> None:
         destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Internal Server Error", 500)
-        with pytest.raises(ToolError, match="Internal Server Error"):
+        with pytest.raises(ToolError, match=r"Nothing was changed: checking whether leaving .*Internal Server Error"):
+            await _call(mcp, "leave_circle", circle_id="c")
+        destructive.ocs_put_json.assert_not_awaited()
+
+    async def test_a_failed_member_list_leaves_nothing(self, mcp: FastMCP, destructive: MagicMock) -> None:
+        destructive.ocs_get.side_effect = [OWNER, FOLDER, NextcloudError("OCS GET x: Bad Gateway", 502)]
+        with pytest.raises(ToolError, match=r"Nothing was changed: checking whether leaving .*Bad Gateway"):
             await _call(mcp, "leave_circle", circle_id="c")
         destructive.ocs_put_json.assert_not_awaited()

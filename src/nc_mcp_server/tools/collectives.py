@@ -10,7 +10,7 @@ from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..client import NextcloudClient, NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
-from .circles import refuse_team_folder_loss, team_folder_at_stake
+from .circles import get_team_folder, refuse_team_folder_loss, team_folder_at_stake
 
 API = "apps/collectives/api/v1.0"
 
@@ -245,7 +245,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
             emoji: Optional emoji icon for the collective (e.g. "📚").
 
         Returns:
-            JSON object with the created collective details.
+            JSON object with the created collective details, and `team_folder`
+            (the folder's name) when its team got one.
         """
         if not name.strip():
             raise ValueError("Collective name cannot be empty.")
@@ -255,7 +256,17 @@ def _register_write_tools(mcp: FastMCP) -> None:
             post_data["emoji"] = emoji
         data = await client.ocs_post_json(f"{API}/collectives", json_data=post_data)
         collective = data["collective"]
-        return json.dumps(_format_collective(collective), default=str)
+        result = _format_collective(collective)
+        if collective.get("circleId"):
+            try:
+                folder = await get_team_folder(client, collective["circleId"])
+            except NextcloudError:
+                folder = None  # the collective exists; its team folder is only extra information
+            if folder is not None:
+                result["team_folder"] = folder.get("mountPoint")
+                # A session that started before the folder existed can miss it for minutes, a new login sees it
+                await client.renew_session()
+        return json.dumps(result, default=str)
 
     @mcp.tool(annotations=ADDITIVE)
     @require_permission(PermissionLevel.WRITE)
@@ -448,7 +459,12 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         if delete_team:
             folder = await _trashed_team_folder(client, collective_id)
             if folder is not None and not delete_team_folder:
-                raise refuse_team_folder_loss("Deleting this collective's team", folder)
+                raise refuse_team_folder_loss(
+                    "Deleting this collective's circle (team) would also delete its",
+                    folder,
+                    "Call without delete_team to keep the circle and its folder; to delete them too, the circle's "
+                    "owner calls again with delete_team=true and delete_team_folder=true.",
+                )
         suffix = "?circle=1" if delete_team else ""
         await client.ocs_delete(f"{API}/collectives/trash/{collective_id}{suffix}")
         if folder is not None:

@@ -103,7 +103,7 @@
 | Shares | 8 | 86 |
 | System Tags | 6 | 22 |
 | Mail | 10 | 102 |
-| Collectives | 25 | 100 |
+| Collectives | 25 | 103 |
 | App Management | 4 | 14 |
 | Calendar | 6 | 44 |
 | Contacts | 6 | 78 |
@@ -119,11 +119,11 @@
 | File Helpers | — | 36 |
 | File Reminders | 3 | 22 |
 | Forms | 25 | 34 |
-| Circles | 14 | 61 |
+| Circles | 14 | 63 |
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1818** |
+| **Total** | **223** | **1823** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.

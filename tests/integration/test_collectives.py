@@ -11,7 +11,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from nc_mcp_server.tools import collectives
 from nc_mcp_server.tools.circles import get_team_folder
 
-from .conftest import McpTestHelper
+from .conftest import McpTestHelper, team_folders_expected
 
 pytestmark = pytest.mark.integration
 
@@ -354,6 +354,8 @@ class TestTrashAndRestoreCollective:
             assert coll["name"] in await _team_names(nc_mcp)
             team = next(t for t in await _teams(nc_mcp) if t.get("name") == coll["name"])
             folder = await get_team_folder(nc_mcp.client, team["id"])
+            assert (folder is not None) == team_folders_expected()
+            assert coll.get("team_folder") == (folder and folder["mountPoint"])
             await nc_mcp.call("trash_collective", collective_id=coll["id"])
             if folder is None:
                 result = await nc_mcp.call("delete_collective", collective_id=coll["id"], delete_team=True)
@@ -884,4 +886,4 @@ class TestCollectivePermissions:
             with contextlib.suppress(Exception):
                 await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/{coll['id']}")
             with contextlib.suppress(Exception):
-                await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/trash/{coll['id']}")
+                await client.ocs_delete(f"apps/collectives/api/v1.0/collectives/trash/{coll['id']}?circle=1")

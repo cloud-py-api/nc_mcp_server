@@ -17,7 +17,7 @@ from nc_mcp_server.config import Config
 from nc_mcp_server.state import get_client, get_config, set_state
 from nc_mcp_server.tools.circles import get_team_folder
 
-from .conftest import McpTestHelper
+from .conftest import McpTestHelper, team_folders_expected
 
 pytestmark = pytest.mark.integration
 
@@ -413,21 +413,36 @@ class TestJoinLeave:
 
 async def _team_folder_circle(nc_mcp: McpTestHelper, name: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Create a circle with a team folder, or skip the test where the server cannot make one."""
-    created: dict[str, Any] = json.loads(await nc_mcp.call("create_circle", name=name, team_folder=True))
-    if created["team_folder"] is None:
+    if not team_folders_expected():
         pytest.skip("team folders need Nextcloud 35+ with the Team folders app")
+    created: dict[str, Any] = json.loads(await nc_mcp.call("create_circle", name=name, team_folder=True))
+    assert created["team_folder"] is not None, created.get("team_folder_note")
     return created, created["team_folder"]
 
 
-async def _wait_for_file_gone(nc_mcp: McpTestHelper, path: str) -> bool:
-    """Return True once the file can no longer be read, or False if it is still there after the timeout."""
+def _group_folder_exists(folder_id: int) -> bool:
+    """Whether the Team folders app still has the folder, asked as the server admin who sees them all."""
+    config = get_config()
+    response = niquests.get(
+        f"{config.nextcloud_url}/index.php/apps/groupfolders/folders/{folder_id}",
+        auth=(config.user, config.password),
+        headers={"OCS-APIRequest": "true", "Accept": "application/json"},
+        timeout=10,
+    )
+    if response.status_code == 404:
+        return False
+    response.raise_for_status()
+    return True
+
+
+async def _wait_for_folder_gone(folder: dict[str, Any]) -> bool:
+    """Return True once the team folder no longer exists, or False if it is still there after the timeout.
+
+    Checking a file inside would not do: the caller loses access with its membership either way.
+    """
     deadline = time.monotonic() + CIRCLES_ASYNC_TIMEOUT
     while True:
-        try:
-            await nc_mcp.client.dav_get(path)
-        except NextcloudError as e:
-            if e.status_code != 404:
-                raise
+        if not _group_folder_exists(folder["id"]):
             return True
         if time.monotonic() > deadline:
             return False
@@ -472,7 +487,7 @@ class TestTeamFolders:
         result = json.loads(await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True))
         assert result == {"deleted_circle_id": circle["id"], "deleted_team_folder": folder["mountPoint"]}
         assert await _wait_for_deletion(nc_mcp, circle["id"])
-        assert await _wait_for_file_gone(nc_mcp, path)
+        assert await _wait_for_folder_gone(folder)
 
     @pytest.mark.asyncio
     async def test_last_member_leave_keeps_the_folder_until_told(self, nc_mcp: McpTestHelper) -> None:
@@ -485,8 +500,8 @@ class TestTeamFolders:
         assert (await nc_mcp.client.dav_get(path))[0] == b"team data"
 
         await nc_mcp.call("leave_circle", circle_id=circle["id"], delete_team_folder=True)
+        assert await _wait_for_folder_gone(folder)
         assert await _wait_for_deletion(nc_mcp, circle["id"])
-        assert await _wait_for_file_gone(nc_mcp, path)
 
     @pytest.mark.asyncio
     async def test_owner_leave_hands_the_team_over(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
@@ -500,8 +515,10 @@ class TestTeamFolders:
                 assert levels == {circle_peer: 9}
                 assert await get_team_folder(get_client(), circle["id"]) == folder
             finally:
-                # Admin is no longer a member, so the cleanup could not remove the circle
-                await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
+                # Admin is no longer a member, so the cleanup could not remove the circle. If the handover did
+                # not happen, admin still owns it and the cleanup will; the assertion above then tells why.
+                with contextlib.suppress(ToolError):
+                    await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
 
     @pytest.mark.asyncio
     async def test_owner_leave_hands_the_team_to_an_invitee(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
@@ -518,7 +535,8 @@ class TestTeamFolders:
                 assert levels == {circle_peer: 9}
                 assert await get_team_folder(get_client(), circle["id"]) == folder
             finally:
-                await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
+                with contextlib.suppress(ToolError):
+                    await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
 
 
 class TestSearch:

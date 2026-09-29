@@ -221,6 +221,34 @@ class TestMovePage:
 TRASH = {"collectives": [{"id": 3, "circleId": "team3"}, {"id": 4, "circleId": "team4"}]}
 FOLDER = {"id": 7, "quota": -3, "mountPoint": "Team 3"}
 NO_FOLDER = NextcloudError("OCS GET x: No team folder linked to this team", 404)
+COLLECTIVE = {"id": 5, "name": "Team 5", "circleId": "team5"}
+
+
+class TestCreateCollective:
+    async def test_reports_the_team_folder(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.WRITE)
+        client.ocs_post_json = AsyncMock(return_value={"collective": COLLECTIVE})
+        client.ocs_get.return_value = {**FOLDER, "mountPoint": "Team 5"}
+        client.renew_session = AsyncMock()
+        result = json.loads(await _call(mcp, "create_collective", name="Team 5"))
+        assert result["team_folder"] == "Team 5"
+        client.ocs_get.assert_awaited_once_with("apps/circles/teams/team5/folder")
+        client.renew_session.assert_awaited_once_with()
+
+    @pytest.mark.parametrize("error", [NO_FOLDER, NextcloudError("OCS GET x: Internal Server Error", 500)])
+    async def test_without_a_team_folder(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock], error: NextcloudError
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.WRITE)
+        client.ocs_post_json = AsyncMock(return_value={"collective": COLLECTIVE})
+        client.ocs_get.side_effect = error
+        client.renew_session = AsyncMock()
+        result = json.loads(await _call(mcp, "create_collective", name="Team 5"))
+        assert result["id"] == 5
+        assert "team_folder" not in result
+        client.renew_session.assert_not_awaited()
 
 
 class TestDeleteCollective:
@@ -247,7 +275,7 @@ class TestDeleteCollective:
         set_permission_level(PermissionLevel.DESTRUCTIVE)
         client.ocs_get.side_effect = [TRASH, FOLDER]
         client.ocs_delete = AsyncMock(return_value={})
-        with pytest.raises(ToolError, match=r"team folder 'Team 3'.*Nothing was changed.*delete_team_folder=true"):
+        with pytest.raises(ToolError, match=r"team folder 'Team 3'.*Nothing was changed.*Call without delete_team"):
             await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
         assert client.ocs_get.await_args_list == [
             call("apps/collectives/api/v1.0/collectives/trash"),
@@ -280,9 +308,7 @@ class TestDeleteCollective:
         set_permission_level(PermissionLevel.DESTRUCTIVE)
         client.ocs_get.side_effect = [TRASH, NextcloudError("OCS GET x: Insufficient permissions", 403)]
         client.ocs_delete = AsyncMock(return_value={})
-        with pytest.raises(
-            ToolError, match=r"Nothing was changed: checking the team folder of circle team3 .*Insufficient"
-        ):
+        with pytest.raises(ToolError, match=r"Nothing was changed: you are not a member of circle team3"):
             await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
         client.ocs_delete.assert_not_awaited()
 
