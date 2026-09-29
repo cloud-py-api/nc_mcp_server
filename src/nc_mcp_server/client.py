@@ -261,7 +261,9 @@ class NextcloudClient:
         """Log in again, so the following requests run in a new server session.
 
         Nextcloud does not show an existing session the federated shares accepted during it,
-        while a session that starts after they were set up for the user sees them.
+        while a session that starts after they were set up for the user sees them. A login also
+        refreshes the user's cached mounts, which otherwise miss a new team folder for up to
+        five minutes (fs_mount_cache_duration).
         """
         await self._reset_session()
 

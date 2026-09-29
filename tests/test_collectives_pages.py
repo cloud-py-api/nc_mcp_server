@@ -218,14 +218,71 @@ class TestMovePage:
         assert result["id"] == 61
 
 
+TRASH = {"collectives": [{"id": 3, "circleId": "team3"}, {"id": 4, "circleId": "team4"}]}
+FOLDER = {"id": 7, "quota": -3, "mountPoint": "Team 3"}
+NO_FOLDER = NextcloudError("OCS GET x: No team folder linked to this team", 404)
+
+
 class TestDeleteCollective:
     @pytest.mark.parametrize(("delete_team", "suffix"), [(False, ""), (True, "?circle=1")])
     async def test_team(self, mcp_with_mock_client: tuple[FastMCP, MagicMock], delete_team: bool, suffix: str) -> None:
         mcp, client = mcp_with_mock_client
         set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_get.side_effect = [TRASH, NO_FOLDER]
         client.ocs_delete = AsyncMock(return_value={})
         await _call(mcp, "delete_collective", collective_id=3, delete_team=delete_team)
         client.ocs_delete.assert_awaited_once_with(f"apps/collectives/api/v1.0/collectives/trash/3{suffix}")
+
+    async def test_keeping_the_team_skips_the_folder_check(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_delete = AsyncMock(return_value={})
+        await _call(mcp, "delete_collective", collective_id=3)
+        client.ocs_get.assert_not_awaited()
+
+    async def test_refuses_to_lose_the_team_folder(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_get.side_effect = [TRASH, FOLDER]
+        client.ocs_delete = AsyncMock(return_value={})
+        with pytest.raises(ToolError, match=r"team folder 'Team 3'.*Nothing was changed.*delete_team_folder=true"):
+            await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
+        assert client.ocs_get.await_args_list == [
+            call("apps/collectives/api/v1.0/collectives/trash"),
+            call("apps/circles/teams/team3/folder"),
+        ]
+        client.ocs_delete.assert_not_awaited()
+
+    async def test_deletes_the_team_folder_when_asked(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_get.side_effect = [TRASH, FOLDER]
+        client.ocs_delete = AsyncMock(return_value={})
+        result = await _call(mcp, "delete_collective", collective_id=3, delete_team=True, delete_team_folder=True)
+        assert "team folder 'Team 3'" in result
+        client.ocs_delete.assert_awaited_once_with("apps/collectives/api/v1.0/collectives/trash/3?circle=1")
+
+    async def test_not_in_the_trash_leaves_the_error_to_the_server(
+        self, mcp_with_mock_client: tuple[FastMCP, MagicMock]
+    ) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_get.return_value = TRASH
+        client.ocs_delete = AsyncMock(side_effect=NextcloudError("OCS DELETE x: Collective not found", 404))
+        with pytest.raises(ToolError, match="Collective not found"):
+            await _call(mcp, "delete_collective", collective_id=9, delete_team=True)
+        client.ocs_get.assert_awaited_once_with("apps/collectives/api/v1.0/collectives/trash")
+
+    async def test_a_failed_folder_check_deletes_nothing(self, mcp_with_mock_client: tuple[FastMCP, MagicMock]) -> None:
+        mcp, client = mcp_with_mock_client
+        set_permission_level(PermissionLevel.DESTRUCTIVE)
+        client.ocs_get.side_effect = [TRASH, NextcloudError("OCS GET x: Insufficient permissions", 403)]
+        client.ocs_delete = AsyncMock(return_value={})
+        with pytest.raises(ToolError, match="Insufficient permissions"):
+            await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
+        client.ocs_delete.assert_not_awaited()
 
 
 class TestSearch:

@@ -57,6 +57,7 @@
 - [x] Activity search: get_activity takes search, start, end and actor on Nextcloud 35 (refused on older servers, which would ignore them) and returns an empty page instead of failing at the end of the feed; list_activity_filters, get_activity_counts (2026-09-26)
 - [x] search_files matches % and _ in the query literally instead of as database wildcards (2026-09-26)
 - [x] update_circle_member_level explains when Circles cannot transfer ownership (SQLite or PostgreSQL before nextcloud/circles#2916) instead of passing on the database error (2026-09-26)
+- [x] Team folders (Nextcloud 35 with the Team folders app): create_circle makes one only with team_folder=true; delete_circle, leave_circle and delete_collective(delete_team) refuse to delete a team folder and its files unless delete_team_folder=true (2026-09-29)
 
 ### In Progress
 
@@ -102,7 +103,7 @@
 | Shares | 8 | 86 |
 | System Tags | 6 | 22 |
 | Mail | 10 | 102 |
-| Collectives | 25 | 95 |
+| Collectives | 25 | 100 |
 | App Management | 4 | 14 |
 | Calendar | 6 | 44 |
 | Contacts | 6 | 78 |
@@ -118,11 +119,11 @@
 | File Helpers | — | 36 |
 | File Reminders | 3 | 22 |
 | Forms | 25 | 34 |
-| Circles | 14 | 37 |
+| Circles | 14 | 58 |
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1789** |
+| **Total** | **223** | **1815** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.

@@ -448,7 +448,7 @@ instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 | `share_collective` | write | Create a public link to a collective or one page, optionally editable and with a password |
 | `update_collective_share` | write | Change a public link's editing and password |
 | `trash_collective` | destructive | Move a collective to trash |
-| `delete_collective` | destructive | Permanently delete a trashed collective, optionally with its team |
+| `delete_collective` | destructive | Permanently delete a trashed collective, optionally with its team (and, when told, the team's folder) |
 | `trash_collective_page` | destructive | Move a page to trash |
 | `delete_collective_page` | destructive | Permanently delete a trashed page |
 | `delete_collective_tag` | destructive | Delete a tag, taking it off its pages |
@@ -494,15 +494,15 @@ instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 | `get_circle` | read | Get a single circle including the current user's membership |
 | `list_circle_members` | read | List members of a circle |
 | `search_circles` | read | Search circles and candidate members (users/groups/mail) by term |
-| `create_circle` | write | Create a circle; caller becomes owner |
+| `create_circle` | write | Create a circle; caller becomes owner. Optionally with a team folder (Nextcloud 35 + Team folders app) |
 | `update_circle_name` | write | Rename a circle |
 | `update_circle_description` | write | Update description |
 | `update_circle_config` | write | Update config bitmask (VISIBLE, OPEN, INVITE, HIDDEN, etc.) |
 | `add_circle_member` | write | Add a user, group, email, or nested circle as a member |
 | `update_circle_member_level` | write | Promote/demote a member (member/moderator/admin/owner) |
 | `join_circle` | write | Join an open circle |
-| `leave_circle` | write | Leave a circle |
-| `delete_circle` | destructive | Delete a circle |
+| `leave_circle` | destructive | Leave a circle. The owner's leave passes ownership on, or destroys the circle when no one else is left; refuses to lose a team folder unless told |
+| `delete_circle` | destructive | Delete a circle; refuses to delete its team folder and files unless told |
 | `remove_circle_member` | destructive | Kick a member |
 
 ### Cospend

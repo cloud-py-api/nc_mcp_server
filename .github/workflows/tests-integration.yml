@@ -103,6 +103,8 @@ jobs:
           $OCC "php occ app:install forms" || echo "forms already installed"
           $OCC "php occ app:install cospend" || echo "cospend already installed"
           $OCC "php occ app:enable circles" || echo "circles enable failed (may not be shipped)"
+          # Team folders: on Nextcloud 35, Circles gives new teams a folder that deleting the team deletes.
+          $OCC "php occ app:install groupfolders"
           # Dovecot refuses plaintext logins, and its image ships a self-signed certificate for STARTTLS.
           $OCC "php occ config:system:set app.mail.verify-tls-peer --value=false --type=boolean"
           SMTP4DEV_IP=$(docker inspect ${{ job.services.smtp4dev.id }} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')

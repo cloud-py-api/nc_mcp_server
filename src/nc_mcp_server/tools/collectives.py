@@ -7,9 +7,10 @@ from typing import Any, cast
 from mcp.server.fastmcp import FastMCP
 
 from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
-from ..client import NextcloudError
+from ..client import NextcloudClient, NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
+from .circles import get_team_folder, refuse_team_folder_loss
 
 API = "apps/collectives/api/v1.0"
 
@@ -371,6 +372,16 @@ def _register_page_edit_tools(mcp: FastMCP) -> None:
         return json.dumps(_format_page(data["page"]), default=str)
 
 
+async def _trashed_team_folder(client: NextcloudClient, collective_id: int) -> dict[str, Any] | None:
+    """The team folder of a trashed collective's team, which deleting the collective with its team would delete."""
+    data = await client.ocs_get(f"{API}/collectives/trash")
+    for collective in data.get("collectives", []):
+        if collective.get("id") == collective_id and collective.get("circleId"):
+            return await get_team_folder(client, collective["circleId"])
+    # Not in the trash: the delete itself fails with the server's own message.
+    return None
+
+
 def _register_destructive_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
@@ -409,7 +420,7 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
-    async def delete_collective(collective_id: int, delete_team: bool = False) -> str:
+    async def delete_collective(collective_id: int, delete_team: bool = False, delete_team_folder: bool = False) -> str:
         """Permanently delete a collective from the trash.
 
         The collective must be in the trash first (use trash_collective).
@@ -422,13 +433,25 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
                 own the team; otherwise nothing is deleted. The team goes even if it
                 existed before the collective. With false (default) it stays as an
                 ordinary team.
+            delete_team_folder: Deleting the team also deletes its team folder
+                (Nextcloud 35+ with the Team folders app, which gives new
+                collectives' teams one) and every file in it. With delete_team,
+                the tool refuses if the team has a team folder unless this is true.
 
         Returns:
             Confirmation message.
         """
         client = get_client()
+        folder = None
+        if delete_team:
+            folder = await _trashed_team_folder(client, collective_id)
+            if folder is not None and not delete_team_folder:
+                raise refuse_team_folder_loss("Deleting this collective's team", folder)
         suffix = "?circle=1" if delete_team else ""
         await client.ocs_delete(f"{API}/collectives/trash/{collective_id}{suffix}")
+        if folder is not None:
+            name = folder.get("mountPoint")
+            return f"Collective {collective_id} deleted permanently with its team and team folder '{name}'."
         return f"Collective {collective_id} deleted permanently" + (" with its team." if delete_team else ".")
 
     @mcp.tool(annotations=DESTRUCTIVE)
