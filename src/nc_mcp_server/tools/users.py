@@ -307,9 +307,10 @@ def _register_destructive_tools(mcp: FastMCP) -> None:
         """Permanently delete a Nextcloud user. Requires admin privileges.
 
         This cannot be undone. The user's data and files will be removed.
-        The user also leaves every team, which deletes the teams where they
-        were the last member, with those teams' team folders and their files
-        (Nextcloud 35+ with the Team folders app).
+        The user also leaves every team, which deletes the teams they own that
+        have no other member (a pending invitation counts as one), with those
+        teams' team folders and their files (Nextcloud 35+ with the Team
+        folders app).
         To only block access, disable the account with set_user_enabled instead.
 
         Args:

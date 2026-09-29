@@ -425,11 +425,21 @@ async def _wait_for_file_gone(nc_mcp: McpTestHelper, path: str) -> bool:
     while True:
         try:
             await nc_mcp.client.dav_get(path)
-        except NextcloudError:
+        except NextcloudError as e:
+            if e.status_code != 404:
+                raise
             return True
         if time.monotonic() > deadline:
             return False
         await asyncio.sleep(0.5)
+
+
+async def _wait_for_levels(nc_mcp: McpTestHelper, circle_id: str, expected: dict[str, int]) -> dict[str, int]:
+    """Return the members' levels by user once they equal expected, or the last ones after the timeout."""
+    members = await _wait_for_members(
+        nc_mcp, circle_id, lambda members: {m.get("userId"): m["level"] for m in members} == expected
+    )
+    return {str(m.get("userId")): int(m["level"]) for m in members}
 
 
 class TestTeamFolders:
@@ -443,7 +453,8 @@ class TestTeamFolders:
     @pytest.mark.asyncio
     async def test_create_reports_the_folder(self, nc_mcp: McpTestHelper) -> None:
         circle, folder = await _team_folder_circle(nc_mcp, "mcp-test-circle-tf-create")
-        assert folder["mountPoint"] == "mcp-test-circle-tf-create"
+        # Team folders numbers the name when an earlier folder of that name still exists
+        assert folder["mountPoint"].startswith("mcp-test-circle-tf-create")
         assert await get_team_folder(nc_mcp.client, circle["id"]) == folder
         listing = json.loads(await nc_mcp.call("list_directory", path="/", limit=500))
         assert any(entry["path"].strip("/") == folder["mountPoint"] for entry in listing["data"])
@@ -453,7 +464,7 @@ class TestTeamFolders:
         circle, folder = await _team_folder_circle(nc_mcp, "mcp-test-circle-tf-delete")
         path = f"{folder['mountPoint']}/keep.txt"
         await nc_mcp.call("upload_file", path=path, content="team data")
-        with pytest.raises(ToolError, match=r"team folder 'mcp-test-circle-tf-delete' and every file.*Nothing"):
+        with pytest.raises(ToolError, match=r"team folder 'mcp-test-circle-tf-delete.*' and every file.*Nothing"):
             await nc_mcp.call("delete_circle", circle_id=circle["id"])
         assert (await nc_mcp.client.dav_get(path))[0] == b"team data"
         assert json.loads(await nc_mcp.call("get_circle", circle_id=circle["id"]))["id"] == circle["id"]
@@ -466,12 +477,16 @@ class TestTeamFolders:
     @pytest.mark.asyncio
     async def test_last_member_leave_keeps_the_folder_until_told(self, nc_mcp: McpTestHelper) -> None:
         circle, folder = await _team_folder_circle(nc_mcp, "mcp-test-circle-tf-leave")
-        with pytest.raises(ToolError, match=r"last member deletes the circle.*team folder 'mcp-test-circle-tf-leave'"):
+        path = f"{folder['mountPoint']}/keep.txt"
+        await nc_mcp.call("upload_file", path=path, content="team data")
+        with pytest.raises(ToolError, match=r"last member deletes the circle.*team folder 'mcp-test-circle-tf-leave"):
             await nc_mcp.call("leave_circle", circle_id=circle["id"])
         assert await get_team_folder(nc_mcp.client, circle["id"]) == folder
+        assert (await nc_mcp.client.dav_get(path))[0] == b"team data"
 
         await nc_mcp.call("leave_circle", circle_id=circle["id"], delete_team_folder=True)
         assert await _wait_for_deletion(nc_mcp, circle["id"])
+        assert await _wait_for_file_gone(nc_mcp, path)
 
     @pytest.mark.asyncio
     async def test_owner_leave_hands_the_team_over(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
@@ -480,16 +495,30 @@ class TestTeamFolders:
         await _add_member(nc_mcp, circle["id"], circle_peer)
         await nc_mcp.call("leave_circle", circle_id=circle["id"])
         async with _as_peer(circle_peer, CIRCLE_TEST_PWD):
-            deadline = time.monotonic() + CIRCLES_ASYNC_TIMEOUT
-            while True:
-                members = json.loads(await nc_mcp.call("list_circle_members", circle_id=circle["id"]))
-                levels = {m.get("userId"): m["level"] for m in members}
-                if levels == {circle_peer: 9} or time.monotonic() > deadline:
-                    break
-                await asyncio.sleep(0.5)
-            assert levels == {circle_peer: 9}
-            assert await get_team_folder(get_client(), circle["id"]) == folder
-            await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
+            try:
+                levels = await _wait_for_levels(nc_mcp, circle["id"], {circle_peer: 9})
+                assert levels == {circle_peer: 9}
+                assert await get_team_folder(get_client(), circle["id"]) == folder
+            finally:
+                # Admin is no longer a member, so the cleanup could not remove the circle
+                await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
+
+    @pytest.mark.asyncio
+    async def test_owner_leave_hands_the_team_to_an_invitee(self, nc_mcp: McpTestHelper, circle_peer: str) -> None:
+        """A pending invitation is enough for Circles to hand the circle over instead of destroying it."""
+        circle, folder = await _team_folder_circle(nc_mcp, "mcp-test-circle-tf-invitee")
+        await nc_mcp.call("update_circle_config", circle_id=circle["id"], config=32)  # INVITE
+        added = json.loads(await nc_mcp.call("add_circle_member", circle_id=circle["id"], user_id=circle_peer))
+        assert added["status"] == "Invited"
+        await _wait_for_members(nc_mcp, circle["id"], _has_user(circle_peer))
+        await nc_mcp.call("leave_circle", circle_id=circle["id"])
+        async with _as_peer(circle_peer, CIRCLE_TEST_PWD):
+            try:
+                levels = await _wait_for_levels(nc_mcp, circle["id"], {circle_peer: 9})
+                assert levels == {circle_peer: 9}
+                assert await get_team_folder(get_client(), circle["id"]) == folder
+            finally:
+                await nc_mcp.call("delete_circle", circle_id=circle["id"], delete_team_folder=True)
 
 
 class TestSearch:

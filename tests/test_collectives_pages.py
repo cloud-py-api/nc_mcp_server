@@ -280,7 +280,9 @@ class TestDeleteCollective:
         set_permission_level(PermissionLevel.DESTRUCTIVE)
         client.ocs_get.side_effect = [TRASH, NextcloudError("OCS GET x: Insufficient permissions", 403)]
         client.ocs_delete = AsyncMock(return_value={})
-        with pytest.raises(ToolError, match="Insufficient permissions"):
+        with pytest.raises(
+            ToolError, match=r"Nothing was changed: checking the team folder of circle team3 .*Insufficient"
+        ):
             await _call(mcp, "delete_collective", collective_id=3, delete_team=True)
         client.ocs_delete.assert_not_awaited()
 

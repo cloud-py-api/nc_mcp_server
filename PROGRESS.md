@@ -119,11 +119,11 @@
 | File Helpers | — | 36 |
 | File Reminders | 3 | 22 |
 | Forms | 25 | 34 |
-| Circles | 14 | 58 |
+| Circles | 14 | 61 |
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1815** |
+| **Total** | **223** | **1818** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.

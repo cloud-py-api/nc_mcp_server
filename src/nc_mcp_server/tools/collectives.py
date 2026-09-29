@@ -10,7 +10,7 @@ from ..annotations import ADDITIVE, ADDITIVE_IDEMPOTENT, DESTRUCTIVE, READONLY
 from ..client import NextcloudClient, NextcloudError
 from ..permissions import PermissionLevel, require_permission
 from ..state import get_client, get_config
-from .circles import get_team_folder, refuse_team_folder_loss
+from .circles import refuse_team_folder_loss, team_folder_at_stake
 
 API = "apps/collectives/api/v1.0"
 
@@ -236,7 +236,9 @@ def _register_write_tools(mcp: FastMCP) -> None:
         """Create a new collective (shared knowledge base).
 
         A collective is a wiki-like space where team members can create and
-        edit pages together. It automatically creates a landing page.
+        edit pages together. It automatically creates a landing page, and a
+        team (circle) of the same name for its members. On Nextcloud 35+ with
+        the Team folders app, that team also gets a team folder.
 
         Args:
             name: Name of the collective (required, must be unique).
@@ -377,7 +379,7 @@ async def _trashed_team_folder(client: NextcloudClient, collective_id: int) -> d
     data = await client.ocs_get(f"{API}/collectives/trash")
     for collective in data.get("collectives", []):
         if collective.get("id") == collective_id and collective.get("circleId"):
-            return await get_team_folder(client, collective["circleId"])
+            return await team_folder_at_stake(client, collective["circleId"])
     # Not in the trash: the delete itself fails with the server's own message.
     return None
 

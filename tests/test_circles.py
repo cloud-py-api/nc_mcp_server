@@ -1,9 +1,8 @@
 """Unit tests for Circles member level changes and team folder safety."""
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call
-
-import json
 
 import pytest
 from mcp.server.fastmcp import FastMCP
@@ -123,6 +122,16 @@ class TestCreateTeamFolder:
         assert result["team_folder"] is None
         assert "Nextcloud 35" in result["team_folder_note"]
 
+    async def test_a_failed_folder_lookup_still_reports_the_circle(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.ocs_post_json = AsyncMock(return_value={"id": "c"})
+        client.ocs_get = AsyncMock(side_effect=NextcloudError("OCS GET x: Internal Server Error", 500))
+        client.renew_session = AsyncMock()
+        result = json.loads(await _call(mcp, "create_circle", name="Team A", team_folder=True))
+        assert result["id"] == "c"
+        assert result["team_folder"] is None
+        assert result["team_folder_note"].startswith("The circle was created, but its team folder could not be read")
+        client.renew_session.assert_not_awaited()
+
 
 class TestDeleteCircle:
     async def test_without_a_folder(self, mcp: FastMCP, destructive: MagicMock) -> None:
@@ -133,7 +142,7 @@ class TestDeleteCircle:
 
     async def test_refuses_to_lose_the_folder(self, mcp: FastMCP, destructive: MagicMock) -> None:
         destructive.ocs_get.return_value = FOLDER
-        with pytest.raises(ToolError, match=r"team folder 'Team A' and every file.*Nothing was changed"):
+        with pytest.raises(ToolError, match=r"team folder 'Team A' and every file.*Nothing was changed.*owner calls"):
             await _call(mcp, "delete_circle", circle_id="c")
         destructive.ocs_delete.assert_not_awaited()
 
@@ -145,7 +154,9 @@ class TestDeleteCircle:
 
     async def test_a_failed_check_deletes_nothing(self, mcp: FastMCP, destructive: MagicMock) -> None:
         destructive.ocs_get.side_effect = NextcloudError("OCS GET x: Insufficient permissions", 403)
-        with pytest.raises(ToolError, match="Insufficient permissions"):
+        with pytest.raises(
+            ToolError, match=r"Nothing was changed: checking the team folder of circle c .*Insufficient"
+        ):
             await _call(mcp, "delete_circle", circle_id="c", delete_team_folder=True)
         destructive.ocs_delete.assert_not_awaited()
 
@@ -162,16 +173,24 @@ class TestLeaveCircle:
         await _call(mcp, "leave_circle", circle_id="c")
         destructive.ocs_put_json.assert_awaited_once_with("apps/circles/circles/c/leave", json_data={})
 
+    @pytest.mark.parametrize("status", ["Invited", "Requesting"])
+    async def test_a_pending_member_takes_the_circle_over(
+        self, mcp: FastMCP, destructive: MagicMock, status: str
+    ) -> None:
+        """Circles picks any other member entry as the new owner, pending ones too, so nothing is destroyed."""
+        destructive.ocs_get.side_effect = [OWNER, FOLDER, [_member("m-owner"), _member("m2", status)]]
+        await _call(mcp, "leave_circle", circle_id="c")
+        destructive.ocs_put_json.assert_awaited_once_with("apps/circles/circles/c/leave", json_data={})
+
     async def test_the_owner_without_a_folder(self, mcp: FastMCP, destructive: MagicMock) -> None:
         destructive.ocs_get.side_effect = [OWNER, NO_FOLDER]
         await _call(mcp, "leave_circle", circle_id="c")
         destructive.ocs_put_json.assert_awaited_once()
 
-    @pytest.mark.parametrize("others", [[], [_member("m2", "Invited"), _member("m3", "Requesting")]])
     async def test_refuses_when_the_last_member_would_destroy_the_folder(
-        self, mcp: FastMCP, destructive: MagicMock, others: list[dict[str, Any]]
+        self, mcp: FastMCP, destructive: MagicMock
     ) -> None:
-        destructive.ocs_get.side_effect = [OWNER, FOLDER, [_member("m-owner"), *others]]
+        destructive.ocs_get.side_effect = [OWNER, FOLDER, [_member("m-owner")]]
         with pytest.raises(ToolError, match=r"last member deletes the circle.*team folder 'Team A'"):
             await _call(mcp, "leave_circle", circle_id="c")
         assert destructive.ocs_get.await_args_list == [

@@ -501,7 +501,7 @@ instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 | `add_circle_member` | write | Add a user, group, email, or nested circle as a member |
 | `update_circle_member_level` | write | Promote/demote a member (member/moderator/admin/owner) |
 | `join_circle` | write | Join an open circle |
-| `leave_circle` | destructive | Leave a circle. The owner's leave passes ownership on, or destroys the circle when no one else is left; refuses to lose a team folder unless told |
+| `leave_circle` | destructive | Leave a circle. The owner's leave passes ownership to any other member (pending invitations count), or destroys the circle when no one else is left; refuses to lose a team folder unless told |
 | `delete_circle` | destructive | Delete a circle; refuses to delete its team folder and files unless told |
 | `remove_circle_member` | destructive | Kick a member |
 
