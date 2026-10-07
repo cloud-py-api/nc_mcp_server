@@ -112,6 +112,9 @@ reportUnusedFunction = false
 reportPrivateUsage = false
 executionEnvironments = [
   { root = "tests/test_client_retry.py", reportAttributeAccessIssue = false, reportUnknownMemberType = false },
+  # starlette's TestClient (httpx) has no complete types here
+  { root = "tests/test_multiuser.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
+  { root = "tests/integration/test_multiuser.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
   { root = "src/nc_mcp_server/tools/calendar.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
   { root = "src/nc_mcp_server/tools/contacts.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },
   { root = "src/nc_mcp_server/tools/tasks.py", reportUnknownMemberType = false, reportUnknownVariableType = false, reportUnknownArgumentType = false },

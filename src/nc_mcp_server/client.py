@@ -307,7 +307,7 @@ class NextcloudClient:
 
     def _build_session(self) -> niquests.AsyncSession:
         kwargs: dict[str, object] = {
-            "auth": (self._config.user, self._config.password),
+            "auth": (self._config.auth_login, self._config.password),
             "timeout": 30,
             "headers": {
                 "OCS-APIRequest": "true",

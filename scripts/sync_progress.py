@@ -56,6 +56,7 @@ ROWS: dict[str, list[str]] = {
     "Circles": ["integration/test_circles.py", "test_circles.py"],
     "Cospend": ["integration/test_cospend.py"],
     "Flow": ["integration/test_flows.py", "test_flows.py"],
+    "Multi-User": ["integration/test_multiuser.py", "test_multiuser.py"],
 }
 
 

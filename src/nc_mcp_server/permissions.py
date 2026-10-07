@@ -54,9 +54,21 @@ def set_permission_level(level: PermissionLevel) -> None:
     _current_level = level
 
 
+# Lowers the level for the running call (multi-user mode registers one, see multiuser.py).
+_cap_provider: Callable[[PermissionLevel], PermissionLevel] | None = None
+
+
+def set_cap_provider(provider: Callable[[PermissionLevel], PermissionLevel] | None) -> None:
+    """Register the function that lowers the global level for the running call."""
+    global _cap_provider
+    _cap_provider = provider
+
+
 def get_permission_level() -> PermissionLevel:
-    """Get the current global permission level."""
-    return _current_level
+    """Get the permission level of this call: the global level, lowered by a multi-user request's cap."""
+    if _cap_provider is None:
+        return _current_level
+    return _cap_provider(_current_level)
 
 
 def require_permission(level: PermissionLevel) -> Callable[[F], F]:

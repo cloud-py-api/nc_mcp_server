@@ -58,6 +58,7 @@
 - [x] search_files matches % and _ in the query literally instead of as database wildcards (2026-09-26)
 - [x] update_circle_member_level explains when Circles cannot transfer ownership (SQLite or PostgreSQL before nextcloud/circles#2916) instead of passing on the database error (2026-09-26)
 - [x] Team folders (Nextcloud 35 with the Team folders app): create_circle makes one only with team_folder=true; delete_circle, leave_circle and delete_collective(delete_team) refuse to delete a team folder and its files unless delete_team_folder=true (2026-09-29)
+- [x] Multi-user mode (NEXTCLOUD_MCP_MULTIUSER=true, HTTP only): every request brings its own Basic login (app password); per-login client pool (LRU + idle TTL); X-Nextcloud-MCP-Permissions lowers the level per request; initialize/tools/list without a login for client discovery (2026-10-07)
 
 ### In Progress
 
@@ -123,7 +124,8 @@
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1827** |
+| Multi-User | — | 64 |
+| **Total** | **223** | **1891** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.

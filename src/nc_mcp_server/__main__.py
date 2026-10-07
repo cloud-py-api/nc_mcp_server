@@ -2,7 +2,10 @@
 
 import argparse
 
-from .server import create_server
+import uvicorn
+
+from .config import Config
+from .server import create_http_app, create_server
 
 
 def main() -> None:
@@ -15,10 +18,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    mcp = create_server()
+    config = Config.from_env()
+    if config.multiuser and args.transport != "http":
+        parser.error("NEXTCLOUD_MCP_MULTIUSER=true needs --transport http (logins come from HTTP headers)")
+    mcp = create_server(config)
 
     if args.transport == "http":
-        mcp.run(transport="streamable-http")
+        if config.multiuser:
+            uvicorn.run(create_http_app(mcp, config), host=config.host, port=config.port, log_level="info")
+        else:
+            mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")
 

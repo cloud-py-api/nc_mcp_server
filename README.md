@@ -114,6 +114,8 @@ export NEXTCLOUD_MCP_UPLOAD_ROOT=      # unset (default). If set to an absolute 
                                        # inside that directory (symlinks resolved).
 ```
 
+To serve many Nextcloud accounts from one HTTP server, see [Multi-User Mode](#multi-user-mode-http-only).
+
 ### Getting an App Password
 
 1. Log into your Nextcloud instance
@@ -169,6 +171,66 @@ claude mcp add nextcloud \
 nc-mcp-server --transport http
 # Listens on http://0.0.0.0:8100 by default
 ```
+
+### Multi-User Mode (HTTP only)
+
+By default the server acts as the one account in `NEXTCLOUD_USER`. With `NEXTCLOUD_MCP_MULTIUSER=true`,
+one HTTP server can act for many Nextcloud accounts instead: the server holds no credentials, and every
+request brings its own login.
+
+```bash
+export NEXTCLOUD_URL=https://your-nextcloud.example.com
+export NEXTCLOUD_MCP_MULTIUSER=true
+export NEXTCLOUD_MCP_PERMISSIONS=write   # the highest level any request may use
+# NEXTCLOUD_USER and NEXTCLOUD_PASSWORD must NOT be set
+nc-mcp-server --transport http
+```
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `NEXTCLOUD_MCP_MULTIUSER` | `false` | Take the Nextcloud login from each HTTP request. Needs `--transport http`. |
+| `NEXTCLOUD_MCP_MULTIUSER_CACHE_SIZE` | `64` | Number of per-login clients kept (least recently used ones are dropped first). |
+| `NEXTCLOUD_MCP_MULTIUSER_TTL` | `900` | Seconds an unused login's client is kept. |
+
+**Authentication.** Every request needs `Authorization: Basic base64(<login>:<app-password>)`. The login
+can be the user ID or another login name, such as the e-mail address. The first request of a login asks
+Nextcloud for the user ID (`GET /ocs/v2.php/cloud/user`); this also checks the credentials. The server
+answers before any tool runs:
+
+| Situation | HTTP status |
+|-----------|-------------|
+| No `Authorization` header (except discovery, see below), malformed or repeated `Authorization` header, or a login that Nextcloud rejects (401/403) | `401` with `WWW-Authenticate: Basic` |
+| Invalid or repeated `X-Nextcloud-MCP-Permissions` header | `400` |
+| Nextcloud not reachable, a 5xx or an unexpected answer while the login is checked | `502` |
+| `GET` or `DELETE` without a login | `405` |
+
+There is no fallback account: a request that has no valid login never runs as anyone.
+
+**Discovery without a login.** Some MCP clients list the tools at startup, before they know which user
+will call them. A `POST` **without** an `Authorization` header is allowed when all of its JSON-RPC messages
+are `initialize`, `ping`, `tools/list`, `notifications/initialized` or `notifications/cancelled`. The answer is
+the static tool list, and no Nextcloud call happens. `tools/call` and all other methods still need a login.
+A request with a wrong `Authorization` header is refused; it is never treated as discovery.
+
+**Client pool.** The server keeps one Nextcloud client per login (LRU with an idle TTL, see the variables
+above). Two logins never share a client. The cache key is an HMAC of login and password with a random key
+per process, so the pool does not keep the password or a plain hash of it as a key. A client that is
+dropped from the pool is closed after a grace period, so a tool call that is still running can finish.
+
+**Per-request permission cap.** A request can lower, but never raise, the server's permission level with
+the header `X-Nextcloud-MCP-Permissions: read|write|destructive`. Example: a read-only service account that
+uses the same server.
+
+**Security notes.**
+
+- Each request is authenticated on its own. The MCP session ID is not a credential, and the user of a
+  request comes only from that request's header.
+- Basic Auth sends the app password with every request. Use TLS (for example a reverse proxy) or a private
+  network between the MCP client and this server.
+- Anyone who can reach the server with a valid app password can use it as that user, up to the server's
+  permission level. Give each user an app password of their own, and revoke it in Nextcloud to remove access.
+- `NEXTCLOUD_MCP_UPLOAD_ROOT` is not available in this mode, because it would give every user access to the
+  server's local files.
 
 ### Stdio Mode (default)
 

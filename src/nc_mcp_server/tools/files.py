@@ -23,7 +23,7 @@ from ..annotations import (
 )
 from ..client import NextcloudClient
 from ..permissions import PermissionLevel, require_permission
-from ..state import get_client, get_config
+from ..state import get_client, get_config, get_server_config
 
 _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/svg+xml"}
 _MAX_IMAGE_SIZE = 10 * 1024 * 1024
@@ -445,5 +445,5 @@ def register(mcp: FastMCP) -> None:
     _register_read_tools(mcp)
     _register_write_tools(mcp)
     _register_destructive_tools(mcp)
-    if get_config().upload_root:
+    if get_server_config().upload_root:
         _register_upload_from_path_tool(mcp)
