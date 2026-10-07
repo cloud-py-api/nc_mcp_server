@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterable, Callable
 from typing import Any, cast
@@ -60,6 +61,8 @@ def _raise_for_ocs_status(response: niquests.Response, context: str = "") -> Non
     prefix = f"{context}: " if context else ""
     try:
         ocs = response.json()["ocs"]
+        if ocs["meta"].get("statuscode") == _OCS_NO_ROUTE:
+            raise NextcloudError(f"{prefix}{_no_route_message(context)}", code)
         ocs_message: str = (
             ocs["meta"]["message"]
             or _ocs_field_errors(ocs.get("data"))
@@ -74,6 +77,24 @@ def _raise_for_ocs_status(response: niquests.Response, context: str = "") -> Non
         pass
     detail = _STATUS_MESSAGES.get(code, f"HTTP {code}")
     raise NextcloudError(f"{prefix}{detail}", code)
+
+
+# OCS answers 998 when no route matches the path. For an app path that means the app does not
+# serve this account: not installed, disabled, or limited to groups the user is not in. Its own
+# message ("Invalid query, please check the syntax...") misleads; a missing object inside an app
+# comes back with the app's own status instead.
+_OCS_NO_ROUTE = 998
+_APP_PATH = re.compile(r"\bapps/([A-Za-z0-9_-]+)/")
+
+
+def _no_route_message(context: str) -> str:
+    match = _APP_PATH.search(context)
+    if match is None:
+        return "Not found. This Nextcloud has no such API endpoint."
+    return (
+        f"The '{match.group(1)}' app is not available for this Nextcloud account"
+        " (not installed, disabled, or limited to groups the account is not in)"
+    )
 
 
 _CONFIRMATION_REQUIRED = "Password confirmation is required"

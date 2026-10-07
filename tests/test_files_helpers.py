@@ -11,6 +11,7 @@ from nc_mcp_server.tools.files import (
     _open_no_follow,
     _resolve_content_type,
     _resolve_local_upload_path,
+    _search_scope,
 )
 
 
@@ -202,3 +203,34 @@ class TestSearchLiteral:
         body = _build_search_xml("admin", "a_b<", "/", 20, 0, "image")
         assert "<d:literal>%a\\_b&lt;%</d:literal>" in body
         assert "<d:literal>image/%</d:literal>" in body
+
+
+class TestSearchScope:
+    @pytest.mark.parametrize(
+        ("path", "scope"),
+        [
+            ("/", "/files/admin"),
+            ("", "/files/admin"),
+            ("Documents", "/files/admin/Documents"),
+            ("/Documents/Sub/", "/files/admin/Documents/Sub"),
+            ("a//./b", "/files/admin/a/b"),
+            ("..foo/bar..", "/files/admin/..foo/bar.."),
+            ("%2e%2e", "/files/admin/%2e%2e"),
+            ("search #1 %41 Ü", "/files/admin/search #1 %41 Ü"),
+        ],
+    )
+    def test_path_is_normalized_and_kept_literal(self, path: str, scope: str) -> None:
+        assert _search_scope("admin", path) == scope
+
+    @pytest.mark.parametrize("path", ["..", "../bob", "/Documents/../../bob", "a/./..", "a/../b"])
+    def test_parent_segments_are_refused(self, path: str) -> None:
+        with pytest.raises(ValueError, match=r"'\.\.' is not allowed"):
+            _search_scope("admin", path)
+
+    def test_scope_in_body_is_xml_escaped(self) -> None:
+        body = _build_search_xml("admin", "x", "R&D/<x>", 20, 0, "")
+        assert "<d:href>/files/admin/R&amp;D/&lt;x&gt;</d:href>" in body
+
+    def test_body_refuses_parent_segments(self) -> None:
+        with pytest.raises(ValueError, match="not allowed"):
+            _build_search_xml("admin", "x", "../bob", 20, 0, "")

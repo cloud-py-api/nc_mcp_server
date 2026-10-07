@@ -196,3 +196,30 @@ class TestOcsDataMessage:
         body["ocs"]["data"] = data
         with pytest.raises(NextcloudError, match=r"^HTTP 400$"):
             _raise_for_ocs_status(_fake_response(400, body))
+
+
+class TestOcsNoRoute:
+    """OCS 998 on an app path: the app does not serve this account (e.g. Talk limited to groups)."""
+
+    _BODY = _ocs_error_body(
+        "Invalid query, please check the syntax. API specifications are here: "
+        "http://www.freedesktop.org/wiki/Specifications/open-collaboration-services.\n",
+        statuscode=998,
+    )
+
+    def test_app_path_names_the_unavailable_app(self) -> None:
+        with pytest.raises(NextcloudError) as exc_info:
+            _raise_for_ocs_status(_fake_response(404, self._BODY), "OCS POST apps/spreed/api/v4/room")
+        message = str(exc_info.value)
+        assert message.startswith("OCS POST apps/spreed/api/v4/room: The 'spreed' app is not available")
+        assert "Invalid query" not in message
+        assert exc_info.value.status_code == 404
+
+    def test_path_outside_apps_says_not_found(self) -> None:
+        with pytest.raises(NextcloudError, match="no such API endpoint"):
+            _raise_for_ocs_status(_fake_response(404, self._BODY), "OCS GET cloud/nothing")
+
+    def test_app_level_404_keeps_its_message(self) -> None:
+        body = _ocs_error_body("Conversation not found", statuscode=404)
+        with pytest.raises(NextcloudError, match="Conversation not found"):
+            _raise_for_ocs_status(_fake_response(404, body), "OCS GET apps/spreed/api/v4/room/abc")

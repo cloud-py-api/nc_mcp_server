@@ -125,6 +125,17 @@ def _format_conversation(room: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _with_link(room: dict[str, Any]) -> dict[str, Any]:
+    """The formatted conversation plus its join link (url), as Talk shows it under "Copy link".
+
+    index.php keeps the link working on servers without pretty URLs. Guests can only open it
+    for public conversations; for others it works for participants who are logged in.
+    """
+    out = _format_conversation(room)
+    out["url"] = f"{get_client().base_url.rstrip('/')}/index.php/call/{quote(room['token'], safe='')}"
+    return out
+
+
 _PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_-]+)\}")
 
 
@@ -368,11 +379,11 @@ def _register_read_tools(mcp: FastMCP) -> None:
                    Use list_conversations to find tokens.
 
         Returns:
-            JSON object with conversation details.
+            JSON object with conversation details, including url, the link to join it.
         """
         client = get_client()
         data = await client.ocs_get(f"apps/spreed/api/v4/room/{token}")
-        return json.dumps(_format_conversation(data), default=str)
+        return json.dumps(_with_link(data), default=str)
 
     @mcp.tool(annotations=READONLY)
     @require_permission(PermissionLevel.READ)
@@ -648,7 +659,8 @@ def _register_write_tools(mcp: FastMCP) -> None:
                 conversation. An explicit room_type still wins over the preset's.
 
         Returns:
-            JSON object with the created conversation details, including its token.
+            JSON object with the created conversation details, including its token
+            and url, the link to join it.
         """
         if room_type not in _VALID_ROOM_TYPES:
             valid = ", ".join(f"{k} ({v})" for k, v in _VALID_ROOM_TYPES.items())
@@ -665,7 +677,7 @@ def _register_write_tools(mcp: FastMCP) -> None:
             # Talk only records which preset was used; its settings have to be sent along
             post_data = {**await _preset_settings(preset), **post_data, "preset": preset}
         data = await client.ocs_post("apps/spreed/api/v4/room", data=post_data)
-        return json.dumps(_format_conversation(data), default=str)
+        return json.dumps(_with_link(data), default=str)
 
     @mcp.tool(annotations=DESTRUCTIVE)
     @require_permission(PermissionLevel.DESTRUCTIVE)
@@ -1521,6 +1533,71 @@ def _register_conversation_admin_tools(mcp: FastMCP) -> None:
         return json.dumps(_format_conversation(room), ensure_ascii=False)
 
 
+def _register_access_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_conversation_password(token: str, password: str) -> str:
+        """Set or remove the password of a public conversation. Needs moderator rights.
+
+        Guests who join through the link have to enter it; users of this Nextcloud
+        who are participants do not. Only public conversations have a password.
+
+        Args:
+            token: The conversation token.
+            password: The new password; Talk checks it against the password policy
+                of the instance. An empty string removes the password, which needs
+                the destructive permission level.
+
+        Returns:
+            Confirmation message (never the password).
+        """
+        current = get_permission_level()
+        if not password and not current.includes(PermissionLevel.DESTRUCTIVE):
+            raise PermissionDeniedError(
+                "set_conversation_password without a password", PermissionLevel.DESTRUCTIVE, current
+            )
+        try:
+            await get_client().ocs_put(f"{_ROOM_API}/{token}/password", data={"password": password})
+        except NextcloudError as e:
+            if e.status_code != 400:
+                raise
+            # Talk names the policy rule in the message when it has one; never echo the password
+            raise NextcloudError(
+                f"{e}: only public conversations have a password, and it must match the password policy", 400
+            ) from e
+        return f"Password {'set' if password else 'removed'} for {token}."
+
+    @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
+    @require_permission(PermissionLevel.WRITE)
+    async def set_conversation_lobby(token: str, enabled: bool, open_at: str = "") -> str:
+        """Turn the lobby of a group or public conversation on or off. Needs moderator rights.
+
+        With the lobby on, only moderators can join the call and read the chat;
+        everyone else waits until a moderator turns it off or open_at is reached.
+
+        Args:
+            token: The conversation token.
+            enabled: True to turn the lobby on, False to open the conversation.
+            open_at: Only with enabled: when Talk opens the lobby by itself, as an
+                ISO 8601 time with time zone in the future, e.g.
+                "2026-10-12T19:00:00+02:00" (default: stays closed until a
+                moderator opens it).
+
+        Returns:
+            JSON with the conversation afterwards, including lobby and lobby_opens_at.
+        """
+        if open_at and not enabled:
+            raise ValueError("open_at only goes with enabled=true.")
+        body: dict[str, Any] = {"state": 1 if enabled else 0}
+        if open_at:
+            body["timer"] = _timestamp(open_at, "open_at")
+        data = await get_client().ocs_put(f"{_ROOM_API}/{token}/webinar/lobby", data=body)
+        room = _with_link(data)
+        room["lobby"] = data.get("lobbyState", 0) == 1
+        room["lobby_opens_at"] = _iso(data.get("lobbyTimer"))
+        return json.dumps(room, ensure_ascii=False)
+
+
 def _register_participant_admin_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ADDITIVE_IDEMPOTENT)
     @require_permission(PermissionLevel.WRITE)
@@ -1771,6 +1848,7 @@ def register(mcp: FastMCP) -> None:
     _register_pin_and_reminder_tools(mcp)
     _register_pin_and_reminder_destructive_tools(mcp)
     _register_conversation_admin_tools(mcp)
+    _register_access_tools(mcp)
     _register_participant_admin_tools(mcp)
     _register_conversation_admin_destructive_tools(mcp)
     _register_tag_and_preset_tools(mcp)

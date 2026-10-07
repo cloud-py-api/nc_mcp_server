@@ -533,6 +533,11 @@ class TestSearchFiles:
         assert all(TEST_BASE_DIR in e["path"] for e in data)
 
     @pytest.mark.asyncio
+    async def test_search_refuses_parent_segments(self, nc_mcp: McpTestHelper) -> None:
+        with pytest.raises((ToolError, ValueError), match="not allowed"):
+            await nc_mcp.call("search_files", query="x", path=f"{TEST_BASE_DIR}/../..")
+
+    @pytest.mark.asyncio
     async def test_search_empty_query_and_mimetype_raises(self, nc_mcp: McpTestHelper) -> None:
         with pytest.raises((ToolError, ValueError)):
             await nc_mcp.call("search_files")

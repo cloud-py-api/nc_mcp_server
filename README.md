@@ -30,9 +30,9 @@ export NEXTCLOUD_PASSWORD=your-app-password
 nc-mcp-server
 ```
 
-## 222 Tools Across 24 Nextcloud Apps
+## 231 Tools Across 24 Nextcloud Apps
 
-A 223rd tool, `upload_file_from_path`, is registered only when the operator sets
+A 232nd tool, `upload_file_from_path`, is registered only when the operator sets
 `NEXTCLOUD_MCP_UPLOAD_ROOT`. See [Files](#files) for details.
 
 | Category | Tools | Protocol |
@@ -52,7 +52,7 @@ A 223rd tool, `upload_file_from_path`, is registered only when the operator sets
 | [Talk](#talk) | conversations, messages, threads, participants, edits, reactions, read state, shared items, pins, reminders, personal settings and tags, participant and conversation management | OCS |
 | [Talk Polls](#talk-polls) | get, create, vote, close polls | OCS |
 | [Announcements](#announcements) | list, create, delete announcements | OCS |
-| [Calendar](#calendar) | list calendars, CRUD events | CalDAV |
+| [Calendar](#calendar) | list, create, share, publish and delete calendars; CRUD events with time zones and recurrence checks | CalDAV |
 | [Contacts](#contacts) | list address books, CRUD contacts | CardDAV |
 | [Tasks](#tasks) | list lists, CRUD tasks, complete | CalDAV |
 | [Mail](#mail) | accounts, mailboxes, messages, send, move, flags, tags | OCS + REST |
@@ -314,7 +314,7 @@ level, as does disabling an account with `set_user_enabled`.
 | Tool | Permission | Description |
 |------|-----------|-------------|
 | `list_conversations` | read | List all Talk conversations |
-| `get_conversation` | read | Get conversation details |
+| `get_conversation` | read | Get conversation details, with the link to join it |
 | `get_messages` | read | Get messages from a conversation, or from one thread |
 | `get_participants` | read | List participants in a conversation |
 | `list_threads` | read | List the most recently active threads in a conversation |
@@ -328,7 +328,9 @@ level, as does disabling an account with `set_user_enabled`.
 | `list_conversation_tags` | read | List your personal conversation tags |
 | `list_conversation_presets` | read | List the presets create_conversation can start from |
 | `send_message` | write | Send a message; can start a thread or post into one |
-| `create_conversation` | write | Create a one-to-one, group or public conversation, optionally from a preset |
+| `create_conversation` | write | Create a one-to-one, group or public conversation, optionally from a preset; returns the link to join it |
+| `set_conversation_password` | write | Set the password guests need for a public conversation (moderators); removing it needs `destructive` |
+| `set_conversation_lobby` | write | Turn the lobby on, optionally until a time, or off (moderators) |
 | `update_conversation` | write | Rename, describe, lock (read-only) or open (public) a conversation (moderators); making it private needs `destructive`; owners can preserve it (Talk 25+) |
 | `add_participant` | write | Add a user, group, team, email guest or federated user (moderators) |
 | `set_participant_role` | write | Make a participant owner (Talk 25+), moderator or user |
@@ -384,9 +386,30 @@ instead of the placeholders Talk stores (`{mention-user1}`, `{file}`).
 | `list_calendars` | read | List user's calendars |
 | `get_events` | read | Get events from a calendar (with date filtering) |
 | `get_event` | read | Get a single event by UID |
-| `create_event` | write | Create a calendar event |
+| `create_event` | write | Create a calendar event (time zone, checked RRULE, video link) |
 | `update_event` | write | Update an event (partial updates supported) |
 | `delete_event` | destructive | Delete a calendar event |
+| `get_calendar_shares` | read | Who a calendar is shared with, public link (owner only) |
+| `create_calendar` | write | Create a calendar, optionally shared with a group right away |
+| `share_calendar` | write | Share a calendar with a user/group or change their rights |
+| `unshare_calendar` | write | Stop sharing a calendar with a user/group |
+| `publish_calendar` | write | Create a public read-only link |
+| `unpublish_calendar` | write | Remove the public link |
+| `delete_calendar` | destructive | Delete a calendar (`expected_name` guard); for a sharee: remove it from their account |
+
+- Time zone: times without an offset are wall time in `timezone` (tool argument), else
+  `NEXTCLOUD_MCP_TIMEZONE` (IANA name, e.g. `Europe/Berlin`), else UTC. Zoned events get a `TZID` and a
+  `VTIMEZONE`, so weekly events stay at 19:00 across daylight saving changes. Moving only the start keeps the
+  duration.
+- RRULE: only `DAILY`/`WEEKLY`/`MONTHLY`/`YEARLY`, known parts, `COUNT`/`INTERVAL` at most 1000, never `COUNT`
+  and `UNTIL` together; `UNTIL` is converted to UTC (or a date for all-day events).
+- Video link: `conference_url` is stored as `CONFERENCE` (RFC 7986) and as `LOCATION` when empty (as Nextcloud
+  Calendar does for Talk rooms), else as a `Video call: <url>` line in the description.
+- Creator guard: `create_event` marks events with `X-NC-MCP-CREATED-BY:<user id>`. `update_event` refuses events
+  without the caller's mark, or with attendees (Nextcloud would notify them), unless `allow_foreign=true`, so a
+  client can ask its user first. `update_event`/`delete_event` take `expected_summary` and refuse to act if the
+  title differs. Event output never lists attendees or organizers, only `has_attendees` and `created_by_me`.
+- Shared calendars appear as `<uri>_shared_by_<owner>` for the people they are shared with.
 
 ### Contacts
 

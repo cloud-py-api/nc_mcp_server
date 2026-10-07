@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .permissions import PermissionLevel
 
@@ -25,6 +26,8 @@ class Config:
         NEXTCLOUD_MCP_UPLOAD_ROOT: Absolute path to a local directory. When set, enables the
             upload_file_from_path tool, restricted to files under this directory (symlinks
             are resolved before the containment check). Unset by default — tool disabled.
+        NEXTCLOUD_MCP_TIMEZONE: IANA time zone (e.g. Europe/Berlin) for calendar times given without
+            an offset. Events then carry a TZID and a VTIMEZONE. Unset: such times are UTC.
     """
 
     nextcloud_url: str = field(default="")
@@ -36,6 +39,8 @@ class Config:
     retry_max: int = field(default=3)
     is_app_password: bool = field(default=False)
     upload_root: str = field(default="")
+    # IANA zone for calendar times without an offset; "" = UTC (see NEXTCLOUD_MCP_TIMEZONE).
+    timezone: str = field(default="")
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -67,6 +72,15 @@ class Config:
         else:
             raise ValueError(f"Invalid NEXTCLOUD_MCP_APP_PASSWORD='{app_pw_raw}'. Expected: true/false, 1/0, yes/no.")
 
+        timezone = os.environ.get("NEXTCLOUD_MCP_TIMEZONE", "").strip()
+        if timezone:
+            try:
+                ZoneInfo(timezone)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise ValueError(
+                    f"Invalid NEXTCLOUD_MCP_TIMEZONE='{timezone}'. Expected an IANA name like Europe/Berlin."
+                ) from None
+
         upload_root_raw = os.environ.get("NEXTCLOUD_MCP_UPLOAD_ROOT", "").strip()
         if upload_root_raw:
             root = Path(upload_root_raw).expanduser()
@@ -88,6 +102,7 @@ class Config:
             retry_max=max(0, retry_max),
             is_app_password=is_app_password,
             upload_root=upload_root,
+            timezone=timezone,
         )
 
     def validate(self) -> None:

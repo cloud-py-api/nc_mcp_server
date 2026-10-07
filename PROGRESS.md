@@ -83,7 +83,7 @@
 
 | Module | Tools | Tests |
 |--------|-------|-------|
-| Files | 10 | 166 |
+| Files | 10 | 167 |
 | Users | 7 | 72 |
 | Groups | 4 | 15 |
 | Notifications | 3 | 11 |
@@ -92,7 +92,7 @@
 | Talk Threads | 5 | 78 |
 | Talk Chat | 9 | 58 |
 | Talk Settings | 6 | 41 |
-| Talk Admin | 5 | 61 |
+| Talk Admin | 7 | 73 |
 | Talk Tags | 6 | 20 |
 | Activity | 3 | 65 |
 | Comments | 4 | 29 |
@@ -105,25 +105,25 @@
 | Mail | 10 | 102 |
 | Collectives | 25 | 106 |
 | App Management | 4 | 14 |
-| Calendar | 6 | 44 |
+| Calendar | 13 | 98 |
 | Contacts | 6 | 78 |
 | Tasks | 7 | 51 |
 | Search | 2 | 17 |
 | User Permissions | — | 25 |
 | Server | — | 8 |
 | Permissions | — | 34 |
-| Errors | — | 55 |
+| Errors | — | 58 |
 | Client | — | 75 |
 | Config | — | 26 |
 | State | — | 2 |
-| File Helpers | — | 36 |
+| File Helpers | — | 51 |
 | File Reminders | 3 | 22 |
 | Forms | 25 | 34 |
 | Circles | 14 | 64 |
 | Cospend | 16 | 41 |
 | Flow | 5 | 58 |
 | Pagination | — | 28 |
-| **Total** | **223** | **1827** |
+| **Total** | **232** | **1912** |
 
 The test counts are what pytest collects, recomputed with `python scripts/sync_progress.py --write`,
 which also fails when a test file is not assigned to a row.

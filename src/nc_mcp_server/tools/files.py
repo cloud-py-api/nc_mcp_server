@@ -112,6 +112,21 @@ def _like_literal(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _search_scope(user: str, path: str) -> str:
+    """The SEARCH scope href of a directory in the user's files.
+
+    Unlike a request URL, the scope is not percent-encoded: Nextcloud's search plugin takes a
+    relative scope href as a path as it stands, without URL-decoding it, so "%41" or "#" in a
+    folder name must be sent raw. Empty and "." segments are dropped. ".." is refused, so the
+    scope cannot point outside the given folder; Nextcloud would refuse it later with a less
+    clear error.
+    """
+    segments = [segment for segment in path.split("/") if segment not in ("", ".")]
+    if ".." in segments:
+        raise ValueError(f"Invalid path {path!r}: '..' is not allowed.")
+    return "/".join(["/files", user, *segments])
+
+
 def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int, mimetype: str) -> str:
     """Build a WebDAV SEARCH request body."""
     where_parts: list[str] = []
@@ -127,9 +142,7 @@ def _build_search_xml(user: str, query: str, path: str, limit: int, offset: int,
         where_clause = where_parts[0]
     else:
         where_clause = "<d:and>" + "".join(where_parts) + "</d:and>"
-    safe_user = xml_escape(user)
-    safe_path = xml_escape(path.strip("/"))
-    scope = f"/files/{safe_user}/{safe_path}" if safe_path else f"/files/{safe_user}"
+    scope = xml_escape(_search_scope(user, path))
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<d:searchrequest xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
@@ -230,7 +243,7 @@ def _register_read_tools(mcp: FastMCP) -> None:
                    (% and _ are not wildcards).
                    Example: "report" matches "quarterly-report.pdf", "report-2026.docx".
             path: Directory to search in (default: "/" for entire user folder).
-                  Example: "Documents" to only search in Documents.
+                  Example: "Documents" to only search in Documents. ".." is not allowed.
             mimetype: Filter by MIME type prefix. Example: "image" for all images,
                       "application/pdf" for PDFs, "text" for all text files.
             limit: Maximum number of results (1-100, default: 20).

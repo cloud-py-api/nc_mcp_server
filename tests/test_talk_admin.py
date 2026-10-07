@@ -243,3 +243,86 @@ class TestConversationLifecycle:
         client.ocs_delete.side_effect = NextcloudError("OCS DELETE x: HTTP 400", 400)
         with pytest.raises(ToolError, match="cannot be deleted; one-to-one ones can only be left"):
             await _call(mcp, "delete_conversation", token="tok")
+
+
+class TestJoinLink:
+    async def test_create_returns_the_link(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.base_url = "https://cloud.example/"
+        client.ocs_post.return_value = {"token": "ab12cd34", "type": 3}
+        data = json.loads(await _call(mcp, "create_conversation", room_type=3, name="Meeting"))
+        assert data["url"] == "https://cloud.example/index.php/call/ab12cd34"
+        assert data["type"] == "public"
+
+    async def test_get_returns_the_link(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.base_url = "https://cloud.example"
+        client.ocs_get.return_value = {"token": "ab12cd34", "type": 2}
+        data = json.loads(await _call(mcp, "get_conversation", token="ab12cd34"))
+        assert data["url"] == "https://cloud.example/index.php/call/ab12cd34"
+
+    async def test_token_is_quoted(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.base_url = "https://cloud.example"
+        client.ocs_get.return_value = {"token": "a/b?c", "type": 2}
+        data = json.loads(await _call(mcp, "get_conversation", token="x"))
+        assert data["url"] == "https://cloud.example/index.php/call/a%2Fb%3Fc"
+
+
+class TestPassword:
+    async def test_set(self, mcp: FastMCP, client: MagicMock) -> None:
+        set_permission_level(PermissionLevel.WRITE)
+        result = await _call(mcp, "set_conversation_password", token="tok", password="geheim-123")
+        assert result == "Password set for tok."
+        assert "geheim" not in result
+        client.ocs_put.assert_awaited_once_with(f"{ROOM}/password", data={"password": "geheim-123"})
+
+    async def test_removing_needs_the_destructive_level(self, mcp: FastMCP, client: MagicMock) -> None:
+        set_permission_level(PermissionLevel.WRITE)
+        with pytest.raises(ToolError, match="destructive"):
+            await _call(mcp, "set_conversation_password", token="tok", password="")
+        client.ocs_put.assert_not_awaited()
+
+    async def test_remove(self, mcp: FastMCP, client: MagicMock) -> None:
+        assert await _call(mcp, "set_conversation_password", token="tok", password="") == "Password removed for tok."
+        client.ocs_put.assert_awaited_once_with(f"{ROOM}/password", data={"password": ""})
+
+    async def test_refusal_is_explained_without_the_password(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.ocs_put.side_effect = NextcloudError("OCS PUT x: HTTP 400", 400)
+        with pytest.raises(ToolError, match="only public conversations have a password") as e:
+            await _call(mcp, "set_conversation_password", token="tok", password="geheim-123")
+        assert "geheim" not in str(e.value)
+
+    async def test_read_level_cannot_set(self, mcp: FastMCP, client: MagicMock) -> None:
+        set_permission_level(PermissionLevel.READ)
+        with pytest.raises(ToolError, match="write"):
+            await _call(mcp, "set_conversation_password", token="tok", password="x")
+        client.ocs_put.assert_not_awaited()
+
+
+class TestLobby:
+    async def test_on_with_time(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.base_url = "https://cloud.example"
+        client.ocs_put.return_value = {"token": "tok", "type": 3, "lobbyState": 1, "lobbyTimer": 4102444800}
+        data = json.loads(
+            await _call(mcp, "set_conversation_lobby", token="tok", enabled=True, open_at="2100-01-01T00:00:00Z")
+        )
+        client.ocs_put.assert_awaited_once_with(f"{ROOM}/webinar/lobby", data={"state": 1, "timer": 4102444800})
+        assert data["lobby"] is True
+        assert data["lobby_opens_at"] == "2100-01-01T00:00:00+00:00"
+        assert data["url"] == "https://cloud.example/index.php/call/tok"
+
+    async def test_off(self, mcp: FastMCP, client: MagicMock) -> None:
+        client.base_url = "https://cloud.example"
+        client.ocs_put.return_value = {"token": "tok", "type": 3, "lobbyState": 0, "lobbyTimer": 0}
+        data = json.loads(await _call(mcp, "set_conversation_lobby", token="tok", enabled=False))
+        client.ocs_put.assert_awaited_once_with(f"{ROOM}/webinar/lobby", data={"state": 0})
+        assert data["lobby"] is False
+        assert data["lobby_opens_at"] == ""
+
+    async def test_time_only_with_lobby_on(self, mcp: FastMCP, client: MagicMock) -> None:
+        with pytest.raises(ToolError, match="only goes with enabled"):
+            await _call(mcp, "set_conversation_lobby", token="tok", enabled=False, open_at="2100-01-01T00:00:00Z")
+        client.ocs_put.assert_not_awaited()
+
+    async def test_past_time_refused(self, mcp: FastMCP, client: MagicMock) -> None:
+        with pytest.raises(ToolError, match="in the future"):
+            await _call(mcp, "set_conversation_lobby", token="tok", enabled=True, open_at="2020-01-01T00:00:00Z")
+        client.ocs_put.assert_not_awaited()

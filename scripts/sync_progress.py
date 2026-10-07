@@ -31,7 +31,12 @@ ROWS: dict[str, list[str]] = {
     "Mail": ["integration/test_mail.py", "test_mail_tools.py"],
     "Collectives": ["integration/test_collectives.py", "test_collectives_pages.py", "test_collectives_sharing.py"],
     "App Management": ["integration/test_app_management.py"],
-    "Calendar": ["integration/test_calendar.py"],
+    "Calendar": [
+        "integration/test_calendar.py",
+        "integration/test_calendar_admin.py",
+        "integration/test_calendar_guard.py",
+        "test_calendar_helpers.py",
+    ],
     "Contacts": ["integration/test_contacts.py"],
     "Tasks": ["integration/test_tasks.py"],
     "Search": ["integration/test_search.py"],
